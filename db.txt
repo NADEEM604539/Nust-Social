@@ -1,0 +1,545 @@
+-- ================================================
+-- NUST LIFE HUB - COMPLETE DATABASE SCHEMA (UPDATED)
+-- Clerk Removed & Society Event Tickets Added
+-- ================================================
+
+DROP DATABASE IF EXISTS nust_social;
+CREATE DATABASE nust_social;
+USE nust_social;
+
+-- =========================
+-- MEDIA (GLOBAL)
+-- =========================
+CREATE TABLE media (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    url TEXT NOT NULL,
+    type ENUM('IMAGE','VIDEO','DOCUMENT') NOT NULL,
+    processing_status ENUM('UPLOADING','PROCESSING','READY','FAILED') DEFAULT 'READY',
+    file_size INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_type (type),
+    INDEX idx_status (processing_status)
+);
+
+-- =========================
+-- USERS & AUTH
+-- =========================
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    encrypted_name VARCHAR(255) NOT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    status ENUM('ACTIVE','SUSPENDED','BANNED') DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_email (email),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE user_profiles (
+    user_id BIGINT PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    name VARCHAR(100),
+    bio TEXT,
+    avatar_media_id BIGINT NULL,
+    email_verified_domain VARCHAR(50),
+    batch_year INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (avatar_media_id) REFERENCES media(id) ON DELETE SET NULL,
+    INDEX idx_username (username)
+);
+
+-- ROLES
+CREATE TABLE roles (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name ENUM('ADMIN','USER') UNIQUE NOT NULL
+);
+
+CREATE TABLE user_roles (
+    user_id BIGINT,
+    role_id BIGINT,
+    PRIMARY KEY(user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id)
+);
+
+-- FOLLOW SYSTEM
+CREATE TABLE follows (
+    follower_id BIGINT,
+    following_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (follower_id, following_id),
+    FOREIGN KEY (follower_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (following_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_follower_id (follower_id),
+    INDEX idx_following_id (following_id)
+);
+
+-- =========================
+-- POSTS
+-- =========================
+CREATE TABLE posts (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT,
+    type ENUM('RUMOR','CONFESSION','SOCIETY_POST','ANNOUNCEMENT','MARKETPLACE_POST') NOT NULL,
+    caption TEXT,
+    description TEXT,
+    is_anonymous BOOLEAN DEFAULT FALSE,
+    is_approved BOOLEAN DEFAULT TRUE,
+    deleted_at TIMESTAMP NULL,
+    edited_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_user_id (user_id),
+    INDEX idx_type (type),
+    INDEX idx_created_at (created_at DESC),
+    INDEX idx_deleted_at (deleted_at),
+    INDEX idx_approved (is_approved)
+);
+
+CREATE TABLE post_media (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT NOT NULL,
+    media_id BIGINT NOT NULL,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
+    INDEX idx_post_id (post_id),
+    INDEX idx_media_id (media_id),
+    UNIQUE(post_id, media_id)
+);
+
+CREATE TABLE tags (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_name (name)
+);
+
+CREATE TABLE post_tags (
+    post_id BIGINT,
+    tag_id BIGINT,
+    PRIMARY KEY(post_id, tag_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
+    INDEX idx_tag_id (tag_id)
+);
+
+-- =========================
+-- COMMENTS
+-- =========================
+CREATE TABLE comments (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    deleted_at TIMESTAMP NULL,
+    edited_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE post_comments (
+    comment_id BIGINT PRIMARY KEY,
+    post_id BIGINT NOT NULL,
+    FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    INDEX idx_post_id (post_id)
+);
+
+-- =========================
+-- REACTIONS
+-- =========================
+CREATE TABLE reactions (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    target_type ENUM('POST','COMMENT') NOT NULL,
+    target_id BIGINT NOT NULL,
+    reaction_type ENUM('LIKE') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, target_type, target_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_target (user_id, target_type, target_id),
+    INDEX idx_target (target_type, target_id)
+);
+
+-- =========================
+-- RUMOR VOTES
+-- =========================
+CREATE TABLE rumor_votes (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    vote ENUM('TRUE','FALSE') NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_post_id (post_id),
+    INDEX idx_user_id (user_id)
+);
+
+-- =========================
+-- POST STATS
+-- =========================
+CREATE TABLE post_stats (
+    post_id BIGINT PRIMARY KEY,
+    likes_count INT DEFAULT 0,
+    comments_count INT DEFAULT 0,
+    views_count INT DEFAULT 0,
+    rumor_true_votes INT DEFAULT 0,
+    rumor_false_votes INT DEFAULT 0,
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+);
+
+CREATE TABLE post_views (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT NOT NULL,
+    user_id BIGINT,
+    viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_post_id (post_id),
+    INDEX idx_viewed_at (viewed_at DESC)
+);
+
+-- =========================
+-- FEED SYSTEM
+-- =========================
+CREATE TABLE feed_cache (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    post_id BIGINT NOT NULL,
+    score FLOAT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    INDEX idx_user_id_created (user_id, created_at DESC),
+    INDEX idx_updated_at (updated_at),
+    UNIQUE(user_id, post_id)
+);
+
+-- =========================
+-- NOTIFICATIONS
+-- =========================
+CREATE TABLE notifications (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    type ENUM(
+        'NEW_COMMENT',
+        'NEW_LIKE',
+        'NEW_FOLLOW',
+        'NEW_MESSAGE',
+        'ORDER_UPDATE',
+        'SOCIETY_POST'
+    ) NOT NULL,
+    reference_id BIGINT,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_user_read (user_id, is_read),
+    INDEX idx_created_at (created_at DESC)
+);
+
+-- =========================
+-- SOCIETIES & EVENTS
+-- =========================
+CREATE TABLE societies (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    created_by BIGINT NOT NULL,
+    is_approved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_created_by (created_by),
+    INDEX idx_approved (is_approved)
+);
+
+CREATE TABLE society_members (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    society_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role ENUM('ADMIN','MEMBER') DEFAULT 'MEMBER',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(society_id, user_id),
+    FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_society_id (society_id),
+    INDEX idx_user_id (user_id)
+);
+
+CREATE TABLE society_posts (
+    post_id BIGINT PRIMARY KEY,
+    society_id BIGINT NOT NULL,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+    INDEX idx_society_id (society_id)
+);
+
+CREATE TABLE events (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    society_id BIGINT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    event_date DATETIME NOT NULL,
+    location VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+    INDEX idx_society_id (society_id),
+    INDEX idx_event_date (event_date)
+);
+
+-- =========================
+-- SOCIETY EVENT TICKETS
+-- =========================
+CREATE TABLE event_tickets (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    event_id BIGINT NOT NULL,
+    ticket_type VARCHAR(100) NOT NULL,
+    price DECIMAL(10,2) NOT NULL,
+    total_stock INT NOT NULL,
+    sold_count INT DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+    UNIQUE(event_id, ticket_type),
+    INDEX idx_event_id (event_id),
+    INDEX idx_ticket_type (ticket_type)
+);
+
+CREATE TABLE ticket_purchases (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    ticket_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    quantity INT DEFAULT 1,
+    total_price DECIMAL(10,2) NOT NULL,
+    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ticket_id) REFERENCES event_tickets(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_ticket_id (ticket_id),
+    INDEX idx_user_id (user_id)
+);
+
+-- =========================
+-- MARKETPLACE SYSTEM
+-- =========================
+CREATE TABLE stores (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    owner_id BIGINT NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_owner_id (owner_id),
+    INDEX idx_is_active (is_active)
+);
+
+CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    store_id BIGINT NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    price DECIMAL(10,2) NOT NULL,
+    stock INT DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
+    deleted_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+    INDEX idx_store_id (store_id),
+    INDEX idx_is_active (is_active),
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE product_media (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    product_id BIGINT NOT NULL,
+    media_id BIGINT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (media_id) REFERENCES media(id) ON DELETE CASCADE,
+    INDEX idx_product_id (product_id),
+    INDEX idx_media_id (media_id)
+);
+
+CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    buyer_id BIGINT NOT NULL,
+    status ENUM('PENDING','CONFIRMED','SHIPPED','DELIVERED','CANCELLED','REFUNDED') DEFAULT 'PENDING',
+    total_amount DECIMAL(10,2) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_buyer_id (buyer_id),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE order_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    quantity INT NOT NULL,
+    price_at_time DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    INDEX idx_order_id (order_id),
+    INDEX idx_product_id (product_id)
+);
+
+CREATE TABLE order_addresses (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    address TEXT NOT NULL,
+    city VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    INDEX idx_order_id (order_id)
+);
+
+CREATE TABLE payments (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
+    method ENUM('COD','CARD','EASYPaisa','JAZZCASH') NOT NULL,
+    status ENUM('PENDING','PAID','FAILED','REFUNDED') DEFAULT 'PENDING',
+    transaction_ref VARCHAR(255),
+    refund_amount DECIMAL(10,2),
+    refund_status ENUM('NONE','PENDING','COMPLETED','FAILED') DEFAULT 'NONE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    INDEX idx_order_id (order_id),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at DESC)
+);
+
+-- =========================
+-- CHAT SYSTEM
+-- =========================
+CREATE TABLE conversations (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE conversation_participants (
+    conversation_id BIGINT,
+    user_id BIGINT,
+    last_read_at TIMESTAMP NULL,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY(conversation_id, user_id),
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_last_read (last_read_at)
+);
+
+CREATE TABLE messages (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    conversation_id BIGINT NOT NULL,
+    sender_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    edited_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_conversation_id (conversation_id),
+    INDEX idx_sender_id (sender_id),
+    INDEX idx_created_at (created_at DESC)
+);
+
+-- =========================
+-- REPORTS & MODERATION
+-- =========================
+CREATE TABLE reports (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    target_type ENUM('POST','COMMENT','PRODUCT','USER') NOT NULL,
+    target_id BIGINT NOT NULL,
+    reason TEXT NOT NULL,
+    status ENUM('PENDING','REVIEWED','RESOLVED','DISMISSED') DEFAULT 'PENDING',
+    action_taken VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_target_type (target_type),
+    INDEX idx_status (status),
+    INDEX idx_created_at (created_at DESC)
+);
+
+CREATE TABLE audit_logs (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT,
+    action VARCHAR(100) NOT NULL,
+    target_type VARCHAR(50) NOT NULL,
+    target_id BIGINT,
+    details JSON,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_target_type (target_type),
+    INDEX idx_created_at (created_at DESC)
+);
+
+-- =========================
+-- TRIGGERS (MAINTENANCE)
+-- =========================
+DELIMITER //
+
+CREATE TRIGGER update_post_stats_on_reaction
+AFTER INSERT ON reactions
+FOR EACH ROW
+BEGIN
+    IF NEW.target_type = 'POST' THEN
+        INSERT INTO post_stats (post_id, likes_count) 
+        VALUES (NEW.target_id, 1)
+        ON DUPLICATE KEY UPDATE 
+        likes_count = likes_count + 1,
+        last_updated = CURRENT_TIMESTAMP;
+    END IF;
+END //
+
+CREATE TRIGGER update_post_stats_on_comment
+AFTER INSERT ON post_comments
+FOR EACH ROW
+BEGIN
+    INSERT INTO post_stats (post_id, comments_count) 
+    VALUES (NEW.post_id, 1)
+    ON DUPLICATE KEY UPDATE 
+    comments_count = comments_count + 1,
+    last_updated = CURRENT_TIMESTAMP;
+END //
+
+CREATE TRIGGER update_post_stats_on_rumor_vote
+AFTER INSERT ON rumor_votes
+FOR EACH ROW
+BEGIN
+    IF NEW.vote = 'TRUE' THEN
+        INSERT INTO post_stats (post_id, rumor_true_votes)
+        VALUES (NEW.post_id, 1)
+        ON DUPLICATE KEY UPDATE 
+        rumor_true_votes = rumor_true_votes + 1,
+        last_updated = CURRENT_TIMESTAMP;
+    ELSE
+        INSERT INTO post_stats (post_id, rumor_false_votes)
+        VALUES (NEW.post_id, 1)
+        ON DUPLICATE KEY UPDATE 
+        rumor_false_votes = rumor_false_votes + 1,
+        last_updated = CURRENT_TIMESTAMP;
+    END IF;
+END //
+
+DELIMITER ;

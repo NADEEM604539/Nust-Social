@@ -1,0 +1,106 @@
+NUST Life Hub / NUST SOCIAL Platform – Full Detailed Idea
+1. Core Vision
+
+You are building a social & marketplace platform for university students where:
+
+Students can interact socially by posting content (confessions, rumors, announcements), with optional anonymity.
+Societies can post events, and sell tickets for their events.
+Students can create their own stores, sell products, and buy from others.
+Real-time chat for communication between users.
+Notifications and analytics for engagement and activity tracking.
+Moderation, reports, and audit logs to keep the platform safe.
+
+Think of it as Instagram + Facebook Groups + Eventbrite + Etsy, but tailored for NUST students.
+
+2. Users and Profiles
+Users Table: Each student has an account with email, name, encrypted_name, status, verified.
+User Profiles: Contain username, avatar, bio, batch_year.
+Roles: ADMIN or USER. Admins can moderate content and societies.
+
+Key features:
+
+Students can follow each other.
+Students can have anonymous posts, which hide their identity while keeping them trackable internally for moderation.
+3. Social Feed
+Posts Table: Students can create different types of posts:
+CONFESSION
+RUMOR
+MARKETPLACE_POST (linking products)
+SOCIETY_POST (shared by societies)
+ANNOUNCEMENT
+Post Media: Attach images, videos, or documents to posts.
+Tags: Posts can have multiple tags (post_tags) to help categorize content.
+Comments & Reactions: Users can comment, like posts, and vote on rumors.
+Statistics: Post stats like likes, views, comments, rumor votes are tracked with triggers.
+
+Anonymity Feature:
+
+Posts can be marked is_anonymous = TRUE. The platform shows them without revealing the user’s name.
+4. Societies & Events
+Societies Table: Each society has name, description, created_by.
+Members Table: Each society has members with roles (ADMIN, MEMBER).
+Society Posts: Societies can post announcements or updates.
+Events: Societies can create events with title, description, location, and event_date.
+Tickets: Each event can have multiple ticket types (VIP, Regular, Student) with price, stock, and sold count.
+Purchases: Students can buy tickets, quantity is tracked, and total price calculated.
+
+This allows:
+
+Societies to earn money from events.
+Students to browse, book, and pay for tickets.
+5. Marketplace
+Stores Table: Students can create a store with name and description.
+Products Table: Products belong to stores, with price, stock, and optional media attachments.
+Orders Table: Tracks student purchases.
+Order Items Table: Products inside an order, quantity, and price.
+Payments Table: Tracks payment methods (COD, Card, EasyPaisa, JazzCash) and status.
+Addresses: Students can specify shipping addresses.
+
+Key Points:
+
+Students can sell their own products.
+Platform handles purchases, payments, and delivery info.
+Marketplace integrates naturally with posts, so products can be shared on the feed.
+6. Chat System
+Conversations: A chat room between 2+ users.
+Participants: Users in a conversation, track last_read_at.
+Messages: Messages sent by users with timestamps.
+Media: Optional media attachments.
+
+This allows:
+
+Private or group chat.
+Students and societies can communicate directly.
+7. Notifications
+Students are notified for:
+New comments or likes on their posts
+New followers
+Order updates
+Event reminders
+Society announcements
+8. Moderation
+Reports Table: Users can report posts, comments, products, or users.
+Audit Logs: All critical actions (post deletion, ticket sale, user ban) are logged.
+Admins review reports and resolve issues.
+9. Extra Features
+Post Scoring & Feed Cache: Feed for each student is scored (e.g., likes, views, interactions) and cached for fast retrieval.
+Rumor Voting System: True/False voting for rumors to track credibility.
+Triggers: Automatic updating of statistics like likes, comments, votes.
+10. How It All Connects
+Users → Can post, comment, react, follow.
+Societies → Can post, create events, sell tickets.
+Events → Linked to societies → tickets sold → purchases by students.
+Stores & Products → Linked to users → orders → payments.
+Posts → Can be anonymous → reactions and comments tracked → statistics updated automatically.
+Chat & Notifications → Keeps users engaged.
+11. Student Flow Example
+Alice registers → creates profile.
+Bob posts a rumor anonymously.
+Alice reacts, comments.
+CS Society posts a new event → VIP & regular tickets.
+Alice buys 2 VIP tickets.
+Alice sets up a store → sells NUST merch.
+Bob buys a t-shirt → order & payment logged.
+Both chat about the event → receive notifications.
+
+✅ This setup allows the platform to be a complete social + marketplace + events hub for university students.
