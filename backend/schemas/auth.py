@@ -11,9 +11,9 @@ from datetime import datetime
 class UserRegister(BaseModel):
     """Registration request"""
     email: EmailStr
-    encrypted_name: str = Field(..., min_length=1)
     password: str = Field(..., min_length=8)
     username: str = Field(..., min_length=3, max_length=50)
+    encrypted_name: Optional[str] = Field(None, description="Auto-generated if not provided")
     
     class Config:
         from_attributes = True
@@ -41,7 +41,7 @@ class OTPVerify(BaseModel):
     """Verify OTP code"""
     email: EmailStr
     otp_code: str = Field(..., min_length=6, max_length=6)
-    purpose: str = Field(..., description="LOGIN or PASSWORD_RESET")
+    purpose: str = Field(..., description="EMAIL_VERIFICATION, LOGIN, or PASSWORD_RESET")
     
     class Config:
         from_attributes = True

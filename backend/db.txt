@@ -27,7 +27,8 @@ CREATE TABLE media (
 CREATE TABLE users (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     email VARCHAR(150) UNIQUE NOT NULL,
-    encrypted_name VARCHAR(255) NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    encrypted_name VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(255),
     is_verified BOOLEAN DEFAULT FALSE,
     status ENUM('ACTIVE','SUSPENDED','BANNED') DEFAULT 'ACTIVE',
@@ -35,6 +36,7 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_email (email),
+    INDEX idx_username (username),
     INDEX idx_status (status),
     INDEX idx_created_at (created_at DESC)
 );

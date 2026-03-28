@@ -3,19 +3,32 @@ NUST Social/NUST Life Hub - Main Application Entry Point
 Purpose: Initialize FastAPI application, register routes, configure middleware, and run server
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config import APP_TITLE, APP_VERSION, APP_DESCRIPTION
 from database import db
 from routes import api_router
 
-# Initialize FastAPI app
+# Lifespan context manager for startup and shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("🚀 Starting up...")
+    db.connect()
+    yield
+    # Shutdown
+    print("🛑 Shutting down...")
+    db.disconnect()
+
+# Initialize FastAPI app with lifespan
 app = FastAPI(
     title=APP_TITLE,
     version=APP_VERSION,
     description=APP_DESCRIPTION,
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 # CORS Middleware - Allow requests from frontend
@@ -29,18 +42,6 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
-
-# Startup event - Connect to database
-@app.on_event("startup")
-async def startup():
-    print("🚀 Starting up...")
-    db.connect()
-
-# Shutdown event - Disconnect from database
-@app.on_event("shutdown")
-async def shutdown():
-    print("🛑 Shutting down...")
-    db.disconnect()
 
 # Health check endpoint
 @app.get("/", tags=["Health"])

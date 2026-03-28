@@ -15,7 +15,7 @@ from config import (
     JWT_EXPIRATION_HOURS,
     JWT_REFRESH_EXPIRATION_DAYS,
     OTP_LENGTH,
-    PASSWORD_MIN_LENGTH,
+    MIN_PASSWORD_LENGTH,
     PASSWORD_REQUIRE_UPPERCASE,
     PASSWORD_REQUIRE_LOWERCASE,  
     PASSWORD_REQUIRE_DIGITS,
@@ -46,8 +46,8 @@ class PasswordManager:
         Validate password strength based on config requirements
         Returns: (is_valid, message)
         """
-        if len(password) < PASSWORD_MIN_LENGTH:
-            return False, f"Password must be at least {PASSWORD_MIN_LENGTH} characters long"
+        if len(password) < MIN_PASSWORD_LENGTH:
+            return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters long"
         
         if PASSWORD_REQUIRE_UPPERCASE and not any(c.isupper() for c in password):
             return False, "Password must contain at least one uppercase letter"

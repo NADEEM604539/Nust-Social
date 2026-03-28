@@ -5,6 +5,8 @@ Uses raw MySQL queries with SQLAlchemy's text() for direct SQL execution
 """
 
 import smtplib
+import uuid
+import hashlib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
@@ -26,12 +28,22 @@ class AuthService:
     """Handle authentication and session management"""
     
     @staticmethod
+    def generate_encrypted_name(email: str, username: str) -> str:
+        """
+        Generate a unique encrypted name from email and username
+        Uses uuid and hash for uniqueness and encryption
+        """
+        unique_value = f"{email}_{username}_{uuid.uuid4()}"
+        encrypted = hashlib.sha256(unique_value.encode()).hexdigest()
+        return encrypted[:32]  # Return first 32 chars
+    
+    @staticmethod
     def register_user(
         db: Session,
         email: str,
-        encrypted_name: str,
         password: str,
-        username: str
+        username: str,
+        encrypted_name: Optional[str] = None
     ) -> Tuple[bool, str, Optional[dict]]:
         """
         Register new user. Creates user with email verification OTP
@@ -56,6 +68,10 @@ class AuthService:
             if result:
                 return False, "Username already taken", None
             
+            # ALWAYS auto-generate encrypted_name for anonymity and uniqueness
+            # Never use user input for encrypted_name
+            encrypted_name = AuthService.generate_encrypted_name(email, username)
+            
             # Validate password strength
             is_valid, msg = PasswordManager.validate_password_strength(password)
             if not is_valid:
@@ -64,11 +80,11 @@ class AuthService:
             # Hash password
             password_hash = PasswordManager.hash_password(password)
             
-            # Create user
+            # Create user with ACTIVE status
             db.execute(
                 text("""
-                    INSERT INTO users (email, encrypted_name, username, password_hash, is_active, created_at)
-                    VALUES (:email, :encrypted_name, :username, :password_hash, 1, NOW())
+                    INSERT INTO users (email, encrypted_name, username, password_hash, status, created_at)
+                    VALUES (:email, :encrypted_name, :username, :password_hash, 'ACTIVE', NOW())
                 """),
                 {
                     "email": email,
@@ -106,10 +122,11 @@ class AuthService:
             )
             db.commit()
             
-            # Send OTP email
-            AuthService.send_otp_email(email, otp_code, "Email Verification")
+            # TODO: Send OTP email
+            # DISABLED FOR TESTING - Uncomment below when email service is ready
+            # AuthService.send_otp_email(email, otp_code, "Email Verification")
             
-            return True, "Registration successful. Please verify your email with the OTP sent.", {
+            return True, f"Registration successful. OTP for testing: {otp_code}", {
                 "user_id": user_id,
                 "email": email
             }
@@ -132,17 +149,17 @@ class AuthService:
         try:
             # Find user
             user_result = db.execute(
-                text("SELECT id, password_hash, is_active FROM users WHERE email = :email"),
+                text("SELECT id, password_hash, status FROM users WHERE email = :email"),
                 {"email": email}
             ).fetchone()
             
             if not user_result:
                 return False, "Invalid email or password", None
             
-            user_id, password_hash, is_active = user_result
+            user_id, password_hash, status = user_result
             
-            if not is_active:
-                return False, "Account is disabled", None
+            if status != 'ACTIVE':
+                return False, "Account is disabled or banned", None
             
             # Verify password
             if not PasswordManager.verify_password(password, password_hash):
@@ -168,10 +185,11 @@ class AuthService:
             )
             db.commit()
             
-            # Send OTP email
-            AuthService.send_otp_email(email, otp_code, "Login Verification")
+            # TODO: Send OTP email
+            # DISABLED FOR TESTING - Uncomment below when email service is ready
+            # AuthService.send_otp_email(email, otp_code, "Login Verification")
             
-            return True, "OTP sent to your email. Please verify to complete login.", {
+            return True, f"OTP for testing: {otp_code}. Please verify to complete login.", {
                 "user_id": user_id,
                 "email": email,
                 "otp_expires_in": OTP_EXPIRATION_MINUTES * 60  # seconds
@@ -190,7 +208,8 @@ class AuthService:
         user_agent: str = None
     ) -> Tuple[bool, str, Optional[dict]]:
         """
-        Verify OTP and create session with tokens
+        Verify OTP and create session with tokens (for LOGIN/PASSWORD_RESET)
+        Or verify email and mark user as verified (for EMAIL_VERIFICATION)
         Returns: (success, message, token_data)
         """
         try:
@@ -230,7 +249,20 @@ class AuthService:
                 {"id": otp_id}
             )
             
-            # Create tokens
+            # Handle EMAIL_VERIFICATION purpose
+            if purpose == "EMAIL_VERIFICATION":
+                db.execute(
+                    text("UPDATE users SET is_verified = 1 WHERE id = :user_id"),
+                    {"user_id": user_id}
+                )
+                db.commit()
+                return True, "Email verified successfully. You can now login.", {
+                    "user_id": user_id,
+                    "email": email,
+                    "verified": True
+                }
+            
+            # Create tokens for LOGIN and PASSWORD_RESET
             tokens = TokenManager.create_session_tokens(user_id)
             
             # Create session in database
@@ -309,10 +341,11 @@ class AuthService:
             )
             db.commit()
             
-            # Send OTP email
-            AuthService.send_otp_email(email, otp_code, "Password Reset")
+            # TODO: Send OTP email
+            # DISABLED FOR TESTING - Uncomment below when email service is ready
+            # AuthService.send_otp_email(email, otp_code, "Password Reset")
             
-            return True, "OTP sent to your email", {
+            return True, f"OTP for testing: {otp_code}. Use this to reset your password.", {
                 "email": email,
                 "otp_expires_in": OTP_EXPIRATION_MINUTES * 60
             }
@@ -384,10 +417,10 @@ class AuthService:
                 # Store in password history
                 db.execute(
                     text("""
-                        INSERT INTO password_history (user_id, password_hash, changed_at)
-                        VALUES (:user_id, :password_hash, NOW())
+                        INSERT INTO password_history (user_id, old_password_hash, changed_at)
+                        VALUES (:user_id, :old_password_hash, NOW())
                     """),
-                    {"user_id": user_id, "password_hash": old_hash}
+                    {"user_id": user_id, "old_password_hash": old_hash}
                 )
             
             # Hash and update new password
@@ -439,10 +472,10 @@ class AuthService:
             # Store old password in history
             db.execute(
                 text("""
-                    INSERT INTO password_history (user_id, password_hash, changed_at)
-                    VALUES (:user_id, :password_hash, NOW())
+                    INSERT INTO password_history (user_id, old_password_hash, changed_at)
+                    VALUES (:user_id, :old_password_hash, NOW())
                 """),
-                {"user_id": user_id, "password_hash": password_hash}
+                {"user_id": user_id, "old_password_hash": password_hash}
             )
             
             # Hash and update new password
@@ -513,14 +546,14 @@ class AuthService:
         token: str
     ) -> Tuple[bool, str, None]:
         """
-        Logout user by deactivating session
+        Logout user by deactivating session (both access and refresh tokens)
         Returns: (success, message, None)
         """
         try:
-            # Find and deactivate session
+            # Find and deactivate session - invalidates both access and refresh tokens
             session_result = db.execute(
                 text("""
-                    SELECT id FROM user_sessions 
+                    SELECT id, refresh_token FROM user_sessions 
                     WHERE user_id = :user_id AND token = :token AND is_active = 1
                 """),
                 {"user_id": user_id, "token": token}
@@ -528,14 +561,15 @@ class AuthService:
             
             if session_result:
                 session_id = session_result[0]
+                # Set is_active to FALSE to invalidate BOTH access and refresh tokens
                 db.execute(
                     text("UPDATE user_sessions SET is_active = 0 WHERE id = :id"),
                     {"id": session_id}
                 )
                 db.commit()
-                return True, "Logged out successfully", None
+                return True, "Logged out successfully. Access token and refresh token are now invalid.", None
             
-            return False, "Session not found", None
+            return False, "Session not found or already logged out", None
         except Exception as e:
             db.rollback()
             return False, f"Logout failed: {str(e)}", None

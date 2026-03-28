@@ -26,7 +26,8 @@ class User(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     email = Column(String(150), unique=True, nullable=False)
-    encrypted_name = Column(String(255), nullable=False)
+    username = Column(String(50), unique=True, nullable=False)
+    encrypted_name = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255))
     is_verified = Column(Boolean, default=False)
     status = Column(Enum(UserStatus), default=UserStatus.ACTIVE)
