@@ -1,0 +1,158 @@
+================================================
+POSTING SYSTEM - IMPLEMENTATION PLAN
+================================================
+
+DATABASE TABLES INVOLVED:
+- posts (id, user_id, type, caption, description, is_anonymous, is_approved, deleted_at, edited_at, created_at)
+- post_media (id, post_id, media_id)
+- tags (id, name)
+- post_tags (post_id, tag_id)
+- comments (id, user_id, content, deleted_at, edited_at, created_at)
+- post_comments (comment_id, post_id)
+- reactions (id, user_id, target_type, target_id, reaction_type, created_at)
+- rumor_votes (id, post_id, user_id, vote, created_at)
+- post_stats (post_id, likes_count, comments_count, views_count, rumor_true_votes, rumor_false_votes)
+- post_views (id, post_id, user_id, viewed_at)
+
+POST TYPES:
+- RUMOR (with True/False voting)
+- CONFESSION (anonymous by default)
+- SOCIETY_POST (created by societies)
+- ANNOUNCEMENT (created by admins)
+- MARKETPLACE_POST (linked to products)
+
+FLOW:
+
+1. CREATE POST
+   Input: PostCreate schema with type, caption, description, is_anonymous, media_ids[], tags[]
+   Process:
+   - Validate post type
+   - Insert into posts table
+   - Link media from media table to post_media
+   - Create/link tags
+   - Initialize post_stats (zeros)
+   Output: PostResponse with post_id, user_id, type, caption, is_anonymous, created_at
+
+2. GET POST (by ID)
+   Input: post_id, user_id (for marking view)
+   Process:
+   - Fetch post with user details
+   - Mark as viewed (post_views)
+   - Fetch media, tags, stats
+   - Check if user already reacted/voted (if rumor)
+   Output: DetailedPostResponse with post, media, tags, stats, reactions count
+
+3. GET FEED (homepage)
+   Input: user_id, offset, limit
+   Process:
+   - Fetch posts from feed_cache (for this user)
+   - Order by score DESC, created_at DESC
+   - Include post_stats and reactions count
+   Output: List[PostResponse]
+
+4. COMMENT ON POST
+   Input: CommentCreate with content, is_anonymous
+   Process:
+   - Insert into comments table
+   - Insert into post_comments (link to post)
+   - Update post_stats comments_count
+   - Create notification for post owner
+   Output: CommentResponse with comment_id, content, is_anonymous, created_at
+
+5. REACT TO POST/COMMENT
+   Input: target_type (POST/COMMENT), target_id, reaction_type (LIKE, LOVE, HAHA, WOW, SAD, ANGRY)
+   Process:
+   - Insert/update reaction in reactions table
+   - Update post_stats likes_count
+   - Create notification
+   Output: ReactionResponse with reaction_id, reaction_type, created_at
+
+6. VOTE ON RUMOR
+   Input: post_id, vote (TRUE/FALSE)
+   Process:
+   - Check post type is RUMOR
+   - Insert/update in rumor_votes
+   - Update post_stats rumor_true_votes/rumor_false_votes
+   Output: RumorVoteResponse with vote, total_true, total_false, percentage_true
+
+7. EDIT POST
+   Input: post_id, caption, description (can't change type/anonymous)
+   Process:
+   - Check user is owner
+   - Update posts table
+   - Set edited_at timestamp
+   Output: PostResponse with updated content
+
+8. DELETE POST
+   Input: post_id
+   Process:
+   - Soft delete (set deleted_at timestamp)
+   - Cascade deletes comments, reactions, votes
+   Output: Success message
+
+9. REPORT POST
+   Input: post_id, reason
+   Process:
+   - Insert into reports table
+   - Create audit log
+   Output: ReportResponse with report_id, status
+
+FILES TO CREATE/UPDATE:
+
+✅ models/posts.py - COMPLETE with Comment, Reaction, RumorVote, PostStats, PostView, Tag models
+✅ schemas/posts.py - COMPLETE with all request/response schemas
+✅ services/post_service.py - CREATE with all business logic
+✅ routes/posts.py - CREATE with all API endpoints
+✅ Update routes/__init__.py - ADD post router
+✅ Update main.py - VERIFY post router included
+
+API ENDPOINTS:
+
+POST   /api/v1/posts              - Create post
+GET    /api/v1/posts/{id}          - Get single post (marks view)
+GET    /api/v1/posts/feed         - Get feed (paginated)
+POST   /api/v1/posts/{id}/comment - Add comment
+POST   /api/v1/posts/{id}/react   - React to post
+POST   /api/v1/posts/{id}/vote    - Vote on rumor (if type=RUMOR)
+PUT    /api/v1/posts/{id}          - Edit post
+DELETE /api/v1/posts/{id}          - Delete post
+POST   /api/v1/posts/{id}/report  - Report post
+
+RESPONSE STRUCTURE:
+
+CreatePostRequest:
+{
+  "type": "RUMOR|CONFESSION|SOCIETY_POST|ANNOUNCEMENT|MARKETPLACE_POST",
+  "caption": "string",
+  "description": "string",
+  "is_anonymous": false,
+  "media_ids": [1, 2, 3],
+  "tags": ["tech", "news"]
+}
+
+PostResponse:
+{
+  "id": 1,
+  "user_id": 10,
+  "encrypted_name": "a3f8b2c9d4e1f6a7",
+  "type": "RUMOR",
+  "caption": "...",
+  "description": "...",
+  "is_anonymous": false,
+  "is_approved": true,
+  "stats": {
+    "likes_count": 5,
+    "comments_count": 2,
+    "views_count": 100,
+    "rumor_true_votes": 8,
+    "rumor_false_votes": 3
+  },
+  "media": [{ "id": 1, "url": "...", "type": "IMAGE" }],
+  "tags": ["tech"],
+  "user_reaction": "LIKE|null",
+  "user_rumor_vote": "TRUE|FALSE|null",
+  "created_at": "2026-03-28T12:00:00Z",
+  "edited_at": null
+}
+
+================================================

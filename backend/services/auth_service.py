@@ -262,6 +262,13 @@ class AuthService:
                     "verified": True
                 }
             
+            # Handle LOGIN purpose - also mark user as verified
+            if purpose == "LOGIN":
+                db.execute(
+                    text("UPDATE users SET is_verified = 1 WHERE id = :user_id"),
+                    {"user_id": user_id}
+                )
+            
             # Create tokens for LOGIN and PASSWORD_RESET
             tokens = TokenManager.create_session_tokens(user_id)
             

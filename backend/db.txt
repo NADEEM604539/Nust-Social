@@ -213,7 +213,7 @@ CREATE TABLE reactions (
     user_id BIGINT NOT NULL,
     target_type ENUM('POST','COMMENT') NOT NULL,
     target_id BIGINT NOT NULL,
-    reaction_type ENUM('LIKE') NOT NULL,
+    reaction_type ENUM("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY") NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, target_type, target_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
