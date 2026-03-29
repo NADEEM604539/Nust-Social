@@ -406,3 +406,48 @@ class UserService:
         """Suspend a user temporarily"""
         # TODO: Implement user suspension
         pass
+    
+    @staticmethod
+    def get_user_ticket_purchases(db: Session, user_id: int, skip: int = 0, limit: int = 20) -> list:
+        """Get user's purchased event tickets with event and ticket details"""
+        try:
+            purchases = db.execute(
+                text("""
+                    SELECT etp.id, etp.event_id, etp.ticket_id, etp.quantity, etp.total_price, etp.status,
+                           etp.created_at, etp.updated_at,
+                           e.title as event_title, e.event_date, e.location,
+                           et.type as ticket_type, et.price
+                    FROM event_ticket_purchases etp
+                    JOIN events e ON etp.event_id = e.id
+                    JOIN event_tickets et ON etp.ticket_id = et.id
+                    WHERE etp.user_id = :user_id
+                    ORDER BY etp.created_at DESC
+                    LIMIT :limit OFFSET :skip
+                """),
+                {"user_id": user_id, "limit": limit, "skip": skip}
+            ).fetchall()
+            
+            return [
+                {
+                    "id": p[0],
+                    "event_id": p[1],
+                    "ticket_id": p[2],
+                    "quantity": p[3],
+                    "total_price": p[4],
+                    "status": p[5],
+                    "created_at": p[6],
+                    "updated_at": p[7],
+                    "event_title": p[8],
+                    "event_date": p[9],
+                    "location": p[10],
+                    "ticket_type": p[11],
+                    "ticket_price": p[12]
+                }
+                for p in purchases
+            ]
+        except Exception as e:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get ticket purchases: {str(e)}"
+            )

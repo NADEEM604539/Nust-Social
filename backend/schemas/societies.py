@@ -3,7 +3,7 @@ Society & Event Schemas
 Purpose: Pydantic models for societies, events, and ticket management
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 from datetime import datetime
 
@@ -46,10 +46,9 @@ class SocietyDetailResponse(BaseModel):
 # ==================== SOCIETY MEMBER SCHEMAS ====================
 
 class SocietyMemberResponse(BaseModel):
-    id: int
     user_id: int
     society_id: int
-    role: str  # ADMIN, MODERATOR, MEMBER
+    role: str = Field(..., pattern="^(ADMIN|MODERATOR|MEMBER)$")
     joined_at: datetime
     
     class Config:
@@ -57,10 +56,9 @@ class SocietyMemberResponse(BaseModel):
 
 
 class SocietyMemberDetailResponse(BaseModel):
-    id: int
     user_id: int
     username: Optional[str] = None
-    role: str
+    role: str = Field(..., pattern="^(ADMIN|MODERATOR|MEMBER)$")
     joined_at: datetime
     
     class Config:
@@ -68,7 +66,7 @@ class SocietyMemberDetailResponse(BaseModel):
 
 
 class UpdateMemberRoleRequest(BaseModel):
-    role: str = Field(..., pattern="^(ADMIN|MODERATOR|MEMBER)$")
+    role: str = Field(..., pattern="^(ADMIN|MODERATOR|MEMBER)$", description="New role: ADMIN, MODERATOR, or MEMBER")
     
     class Config:
         from_attributes = True
@@ -77,21 +75,21 @@ class UpdateMemberRoleRequest(BaseModel):
 # ==================== SOCIETY POST SCHEMAS ====================
 
 class SocietyPostCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=200)
-    content: str = Field(..., min_length=1, max_length=5000)
+    title: str = Field(..., min_length=1, max_length=200, description="Post title")
+    content: str = Field(..., min_length=1, max_length=5000, description="Post content")
     
     class Config:
         from_attributes = True
 
 
 class SocietyPostResponse(BaseModel):
-    id: int
+    post_id: int
     society_id: int
-    title: str
-    content: str
-    created_by: Optional[int] = None
+    caption: str
+    description: Optional[str] = None
+    user_id: int
     created_at: datetime
-    updated_at: datetime
+    media_ids: List[int] = []
     
     class Config:
         from_attributes = True
@@ -167,13 +165,13 @@ class EventTicketResponse(BaseModel):
     price: float
     total_stock: int
     sold_count: int
-    available_stock: int = 0
     
     class Config:
         from_attributes = True
     
+    @computed_field
     @property
-    def available_stock(self):
+    def available_stock(self) -> int:
         return self.total_stock - self.sold_count
 
 
@@ -195,6 +193,17 @@ class EventTicketPurchaseResponse(BaseModel):
     status: str  # PENDING, CONFIRMED, CANCELLED, COMPLETED
     created_at: datetime
     updated_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class EventTicketPurchaseStatusUpdate(BaseModel):
+    new_status: str = Field(
+        ...,
+        pattern="^(PENDING|CONFIRMED|CANCELLED|COMPLETED)$",
+        description="New status: PENDING, CONFIRMED, CANCELLED, or COMPLETED"
+    )
     
     class Config:
         from_attributes = True

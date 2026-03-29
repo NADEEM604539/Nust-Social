@@ -3,16 +3,19 @@ Societies Routes
 Purpose: API endpoints for society management, membership, and society posts
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List
 from database import SessionLocal
 from schemas.societies import (
     SocietyCreate, SocietyResponse, SocietyMemberResponse, 
-    UpdateMemberRoleRequest, SocietyPostCreate, SocietyPostResponse
+    UpdateMemberRoleRequest, SocietyPostCreate, SocietyPostResponse,
+    EventCreate, EventResponse, EventTicketResponse, EventUpdate,
+    EventTicketCreate, EventTicketPurchaseCreate, EventTicketPurchaseResponse,
+    EventTicketPurchaseStatusUpdate
 )
 from services.society_service import SocietyService
-from utils.security import get_current_user
+from routes.auth import get_current_user
 
 router = APIRouter(prefix="/societies", tags=["societies"])
 
@@ -129,12 +132,13 @@ async def join_society(
     Join a society
     - Requires authentication
     """
-    SocietyService.add_member(
+    member = SocietyService.add_member(
         db=db,
         society_id=society_id,
         user_id=current_user_id,
         role="MEMBER"
     )
+    return member
 
 
 @router.delete("/{society_id}/leave", status_code=status.HTTP_204_NO_CONTENT)
@@ -222,6 +226,7 @@ async def remove_member(
         user_id=user_id,
         current_user_id=current_user_id
     )
+    return None
 
 
 # ==================== SOCIETY POSTS ====================
@@ -236,7 +241,7 @@ async def create_society_post(
     """
     Create a society post/announcement
     - Requires authentication
-    - Only society members can create posts
+    - Only society admins and moderators can create posts
     """
     created_post = SocietyService.create_society_post(
         db=db,
@@ -292,3 +297,239 @@ async def delete_society_post(
         post_id=post_id,
         current_user_id=current_user_id
     )
+
+
+# ==================== SOCIETY EVENTS ====================
+
+@router.post("/{society_id}/events", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+async def create_event(
+    society_id: int,
+    event: EventCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new event for a society"""
+    created_event = SocietyService.create_event(
+        db=db,
+        society_id=society_id,
+        event_data=event,
+        current_user_id=current_user_id
+    )
+    return created_event
+
+
+@router.get("/{society_id}/events", response_model=List[EventResponse])
+async def list_events(
+    society_id: int,
+    skip: int = 0,
+    limit: int = 20,
+    db: Session = Depends(get_db)
+):
+    """List all upcoming events for a society"""
+    events = SocietyService.list_events_for_society(
+        db=db,
+        society_id=society_id,
+        skip=skip,
+        limit=limit
+    )
+    return events
+
+
+@router.get("/{society_id}/events/{event_id}", response_model=EventResponse)
+async def get_event(
+    society_id: int,
+    event_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get event details"""
+    event = SocietyService.get_event_by_id(
+        db=db,
+        society_id=society_id,
+        event_id=event_id
+    )
+    return event
+
+
+@router.put("/{society_id}/events/{event_id}", response_model=EventResponse)
+async def update_event(
+    society_id: int,
+    event_id: int,
+    event_update: EventUpdate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update event details"""
+    updated_event = SocietyService.update_event(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        event_data=event_update,
+        current_user_id=current_user_id
+    )
+    return updated_event
+
+
+@router.delete("/{society_id}/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_event(
+    society_id: int,
+    event_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete an event"""
+    SocietyService.delete_event(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        current_user_id=current_user_id
+    )
+
+
+@router.get("/{society_id}/events/{event_id}/tickets", response_model=List[EventTicketResponse])
+async def get_event_tickets(
+    society_id: int,
+    event_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get all ticket types for an event"""
+    tickets = SocietyService.list_event_tickets(
+        db=db,
+        society_id=society_id,
+        event_id=event_id
+    )
+    return tickets
+
+
+@router.post("/{society_id}/events/{event_id}/tickets", response_model=EventTicketResponse, status_code=status.HTTP_201_CREATED)
+async def create_event_ticket(
+    society_id: int,
+    event_id: int,
+    ticket: EventTicketCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a ticket type for an event"""
+    created_ticket = SocietyService.create_event_ticket(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        ticket_data=ticket,
+        current_user_id=current_user_id
+    )
+    return created_ticket
+
+
+@router.put("/{society_id}/events/{event_id}/tickets/{ticket_id}", response_model=EventTicketResponse)
+async def update_event_ticket(
+    society_id: int,
+    event_id: int,
+    ticket_id: int,
+    ticket: EventTicketCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update a ticket type for an event"""
+    updated_ticket = SocietyService.update_event_ticket(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        ticket_id=ticket_id,
+        ticket_data=ticket,
+        current_user_id=current_user_id
+    )
+    return updated_ticket
+
+
+@router.delete("/{society_id}/events/{event_id}/tickets/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_event_ticket(
+    society_id: int,
+    event_id: int,
+    ticket_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a ticket type from an event"""
+    SocietyService.delete_event_ticket(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        ticket_id=ticket_id,
+        current_user_id=current_user_id
+    )
+
+
+@router.post("/{society_id}/events/{event_id}/tickets/purchase", response_model=EventTicketPurchaseResponse, status_code=status.HTTP_201_CREATED)
+async def purchase_ticket(
+    society_id: int,
+    event_id: int,
+    purchase: EventTicketPurchaseCreate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Purchase tickets for an event"""
+    purchase_record = SocietyService.purchase_event_ticket(
+        db=db,
+        event_id=event_id,
+        ticket_id=purchase.ticket_id,
+        user_id=current_user_id,
+        quantity=purchase.quantity
+    )
+    return purchase_record
+
+
+@router.get("/{society_id}/events/{event_id}/attendees", response_model=List)
+async def get_event_attendees(
+    society_id: int,
+    event_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get list of event attendees (users with confirmed/completed ticket purchases)"""
+    attendees = SocietyService.get_event_attendees(
+        db=db,
+        society_id=society_id,
+        event_id=event_id
+    )
+    return attendees
+
+
+@router.get("/{society_id}/events/{event_id}/tickets/purchases", response_model=List)
+async def get_event_ticket_purchases(
+    society_id: int,
+    event_id: int,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all ticket purchases for an event with full details (admin/moderator only)"""
+    purchases = SocietyService.get_event_ticket_purchases(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        current_user_id=current_user_id,
+        skip=skip,
+        limit=limit
+    )
+    return purchases
+
+
+@router.put("/{society_id}/events/{event_id}/tickets/purchase/{purchase_id}/approve", response_model=EventTicketPurchaseResponse)
+async def approve_ticket_purchase(
+    society_id: int,
+    event_id: int,
+    purchase_id: int,
+    status_update: EventTicketPurchaseStatusUpdate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Approve or change ticket purchase status (admin/moderator only)"""
+    purchase = SocietyService.update_ticket_purchase_status(
+        db=db,
+        society_id=society_id,
+        event_id=event_id,
+        purchase_id=purchase_id,
+        new_status=status_update.new_status,
+        current_user_id=current_user_id
+    )
+    return purchase

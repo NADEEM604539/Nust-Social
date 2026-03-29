@@ -6,23 +6,20 @@ Purpose: API endpoints for event management and ticket purchasing
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
-from database import SessionLocal
-from schemas.societies import EventCreate, EventResponse, TicketResponse
+from database import get_db
+from schemas.societies import EventCreate, EventResponse, EventTicketResponse, EventUpdate
+from routes.auth import get_current_user
 
 router = APIRouter(prefix="/events", tags=["events"])
 
 
-def get_db():
-    """Get database session"""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @router.post("/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
-async def create_event(event: EventCreate, society_id: int, db: Session = Depends(get_db)):
+async def create_event(
+    event: EventCreate,
+    society_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Create a new event for a society"""
     # TODO: Implement event creation
     pass
@@ -43,20 +40,29 @@ async def get_event(event_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{event_id}", response_model=EventResponse)
-async def update_event(event_id: int, event_update: EventCreate, db: Session = Depends(get_db)):
+async def update_event(
+    event_id: int,
+    event_update: EventUpdate,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Update event details"""
     # TODO: Implement event update
     pass
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_event(event_id: int, db: Session = Depends(get_db)):
+async def delete_event(
+    event_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Delete an event"""
     # TODO: Implement event deletion
     pass
 
 
-@router.get("/{event_id}/tickets", response_model=List[TicketResponse])
+@router.get("/{event_id}/tickets", response_model=List[EventTicketResponse])
 async def get_event_tickets(event_id: int, db: Session = Depends(get_db)):
     """Get all ticket types for an event"""
     # TODO: Implement get tickets
@@ -64,14 +70,24 @@ async def get_event_tickets(event_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{event_id}/tickets/purchase", status_code=status.HTTP_201_CREATED)
-async def purchase_ticket(event_id: int, ticket_id: int, quantity: int, db: Session = Depends(get_db)):
+async def purchase_ticket(
+    event_id: int,
+    ticket_id: int,
+    quantity: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Purchase tickets for an event"""
     # TODO: Implement ticket purchase
     pass
 
 
 @router.get("/{event_id}/attendees", response_model=List)
-async def get_event_attendees(event_id: int, db: Session = Depends(get_db)):
+async def get_event_attendees(
+    event_id: int,
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """Get list of event attendees"""
     # TODO: Implement get attendees
     pass

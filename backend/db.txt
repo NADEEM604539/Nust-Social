@@ -308,22 +308,23 @@ CREATE TABLE notifications (
 -- =========================
 CREATE TABLE societies (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(150) NOT NULL,
+    name VARCHAR(100) UNIQUE NOT NULL,
     description TEXT,
-    created_by BIGINT NOT NULL,
-    is_approved BOOLEAN DEFAULT FALSE,
+    logo_media_id BIGINT NULL,
+    created_by BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_created_by (created_by),
-    INDEX idx_approved (is_approved)
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (logo_media_id) REFERENCES media(id) ON DELETE SET NULL,
+    INDEX idx_name (name),
+    INDEX idx_created_at (created_at)
 );
 
 CREATE TABLE society_members (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     society_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
-    role ENUM('ADMIN','MEMBER') DEFAULT 'MEMBER',
+    role ENUM('ADMIN','MODERATOR','MEMBER') DEFAULT 'MEMBER',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(society_id, user_id),
     FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
@@ -346,12 +347,15 @@ CREATE TABLE events (
     title VARCHAR(200) NOT NULL,
     description TEXT,
     event_date DATETIME NOT NULL,
-    location VARCHAR(255),
+    location VARCHAR(200),
+    cover_media_id BIGINT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (society_id) REFERENCES societies(id) ON DELETE CASCADE,
+    FOREIGN KEY (cover_media_id) REFERENCES media(id) ON DELETE SET NULL,
     INDEX idx_society_id (society_id),
-    INDEX idx_event_date (event_date)
+    INDEX idx_event_date (event_date),
+    INDEX idx_created_at (created_at)
 );
 
 -- =========================
@@ -360,30 +364,32 @@ CREATE TABLE events (
 CREATE TABLE event_tickets (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     event_id BIGINT NOT NULL,
-    ticket_type VARCHAR(100) NOT NULL,
-    price DECIMAL(10,2) NOT NULL,
+    type ENUM('VIP','REGULAR','STUDENT','FREE') NOT NULL,
+    price FLOAT DEFAULT 0.0,
     total_stock INT NOT NULL,
     sold_count INT DEFAULT 0,
-    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
-    UNIQUE(event_id, ticket_type),
     INDEX idx_event_id (event_id),
-    INDEX idx_ticket_type (ticket_type)
+    INDEX idx_type (type)
 );
 
-CREATE TABLE ticket_purchases (
+CREATE TABLE event_ticket_purchases (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    event_id BIGINT NOT NULL,
     ticket_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     quantity INT DEFAULT 1,
-    total_price DECIMAL(10,2) NOT NULL,
-    purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_price FLOAT NOT NULL,
+    status ENUM('PENDING','CONFIRMED','CANCELLED','COMPLETED') DEFAULT 'PENDING',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
     FOREIGN KEY (ticket_id) REFERENCES event_tickets(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_ticket_id (ticket_id),
-    INDEX idx_user_id (user_id)
+    INDEX idx_event_id (event_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_status (status)
 );
 
 -- =========================

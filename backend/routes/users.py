@@ -298,4 +298,21 @@ async def get_mutual_followers(
     }
 
 
+@router.get("/tickets/purchases", response_model=List)
+async def get_my_ticket_purchases(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: int = Depends(get_current_user)
+):
+    """Get current user's purchased event tickets with full details"""
+    purchases = UserService.get_user_ticket_purchases(
+        db=db,
+        user_id=current_user,
+        skip=skip,
+        limit=limit
+    )
+    return purchases
+
+
 
