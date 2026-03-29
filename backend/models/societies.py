@@ -60,18 +60,12 @@ class SocietyMember(Base):
 class SocietyPost(Base):
     __tablename__ = "society_posts"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    post_id = Column(BigInteger, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True)
     society_id = Column(BigInteger, ForeignKey("societies.id", ondelete="CASCADE"), nullable=False)
-    title = Column(String(200), nullable=False)
-    content = Column(Text)
-    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     society = relationship("Society", back_populates="posts")
-    creator = relationship("User")
+    post = relationship("Post")
 
     __table_args__ = (
         Index("idx_society_id", "society_id"),
-        Index("idx_created_at", "created_at"),
     )
