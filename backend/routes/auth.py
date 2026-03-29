@@ -321,6 +321,59 @@ async def logout_all_devices(
     return {"message": message, "sessions_deactivated": session_count}
 
 
+@router.get("/me", response_model=dict)
+async def get_current_user_info(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get current authenticated user profile information
+    """
+    from sqlalchemy import text
+    
+    try:
+        user_result = db.execute(
+            text("""
+                SELECT u.id, u.email, u.username, u.is_verified, u.status, u.created_at,
+                       COALESCE(up.bio, '') as bio,
+                       COALESCE(up.avatar_media_id, 0) as avatar_media_id,
+                       COALESCE(up.email_verified_domain, '') as email_verified_domain
+                FROM users u
+                LEFT JOIN user_profiles up ON u.id = up.user_id
+                WHERE u.id = :user_id
+            """),
+            {"user_id": user_id}
+        ).fetchone()
+        
+        if not user_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        user_id_db, email, username, is_verified, status_val, created_at, bio, avatar_media_id, email_verified_domain = user_result
+        
+        return {
+            "user_id": user_id_db,
+            "email": email,
+            "username": username,
+            "is_verified": is_verified,
+            "status": status_val,
+            "bio": bio,
+            "avatar_media_id": avatar_media_id if avatar_media_id > 0 else None,
+            "email_verified_domain": email_verified_domain,
+            "created_at": created_at.isoformat() if created_at else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get user information: {str(e)}"
+        )
+
+
 @router.get("/sessions", response_model=dict)
 async def get_sessions(
     user_id: int = Depends(get_current_user),
