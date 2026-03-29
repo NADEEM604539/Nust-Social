@@ -50,6 +50,24 @@ def get_current_user(
     return user_id
 
 
+def get_current_user_optional(
+    authorization: str = Header(None),
+    db: Session = Depends(get_db)
+) -> Optional[int]:
+    """Extract user_id from JWT token (optional - returns None if not provided)"""
+    if not authorization:
+        return None
+    
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    
+    token = parts[1]
+    user_id = JWTManager.get_user_id_from_token(token)
+    
+    return user_id
+
+
 # ===== CREATE POST =====
 @router.post("", response_model=dict, status_code=status.HTTP_201_CREATED)
 async def create_post(
@@ -77,6 +95,33 @@ async def create_post(
         "post_id": data["post_id"],
         "type": data["type"],
         "is_anonymous": data["is_anonymous"]
+    }
+
+
+# ===== GET ALL POSTS FEED =====
+@router.get("", response_model=dict)
+async def get_all_posts(
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    post_type: Optional[str] = Query(None),
+    current_user: Optional[int] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
+    """Get all posts with pagination (authentication optional)"""
+    success, message, data = PostService.get_all_posts(
+        db=db,
+        user_id=current_user,
+        limit=limit,
+        offset=offset,
+        post_type=post_type
+    )
+    
+    if not success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=message)
+    
+    return {
+        "message": message,
+        "data": data
     }
 
 
@@ -234,6 +279,33 @@ async def vote_on_rumor(
     return {
         "message": message,
         "vote": data["vote"],
+        "total_votes_true": data["total_votes_true"],
+        "total_votes_false": data["total_votes_false"],
+        "percentage_true": data["percentage_true"]
+    }
+
+
+# ===== DELETE VOTE =====
+@router.delete("/{post_id}/vote", response_model=dict)
+async def delete_vote(
+    post_id: int,
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove vote from a rumor post"""
+    success, message, data = PostService.delete_vote(
+        db=db,
+        post_id=post_id,
+        user_id=current_user
+    )
+    
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+    
+    return {
+        "message": message,
+        "post_id": data["post_id"],
+        "removed_vote": data["removed_vote"],
         "total_votes_true": data["total_votes_true"],
         "total_votes_false": data["total_votes_false"],
         "percentage_true": data["percentage_true"]

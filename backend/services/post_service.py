@@ -501,17 +501,45 @@ class PostService:
                 return False, "Post not found or is not a rumor", None
 
             # Check if user already voted
-            existing = db.execute(
-                text("SELECT id FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+            existing_vote = db.execute(
+                text("SELECT vote FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
                 {"post_id": post_id, "user_id": user_id}
             ).fetchone()
 
-            if existing:
-                # Update existing vote
-                db.execute(
-                    text("UPDATE rumor_votes SET vote = :vote WHERE post_id = :post_id AND user_id = :user_id"),
-                    {"post_id": post_id, "user_id": user_id, "vote": vote}
-                )
+            if existing_vote:
+                old_vote = existing_vote[0]
+                
+                # Only update if vote is different from existing one
+                if old_vote != vote:
+                    # Decrement old vote count
+                    if old_vote == 'TRUE':
+                        db.execute(
+                            text("UPDATE post_stats SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1) WHERE post_id = :post_id"),
+                            {"post_id": post_id}
+                        )
+                    else:
+                        db.execute(
+                            text("UPDATE post_stats SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1) WHERE post_id = :post_id"),
+                            {"post_id": post_id}
+                        )
+                    
+                    # Update the vote
+                    db.execute(
+                        text("UPDATE rumor_votes SET vote = :vote WHERE post_id = :post_id AND user_id = :user_id"),
+                        {"post_id": post_id, "user_id": user_id, "vote": vote}
+                    )
+                    
+                    # Increment new vote count
+                    if vote == 'TRUE':
+                        db.execute(
+                            text("UPDATE post_stats SET rumor_true_votes = rumor_true_votes + 1 WHERE post_id = :post_id"),
+                            {"post_id": post_id}
+                        )
+                    else:
+                        db.execute(
+                            text("UPDATE post_stats SET rumor_false_votes = rumor_false_votes + 1 WHERE post_id = :post_id"),
+                            {"post_id": post_id}
+                        )
             else:
                 # Create new vote
                 db.execute(
@@ -521,18 +549,18 @@ class PostService:
                     """),
                     {"post_id": post_id, "user_id": user_id, "vote": vote}
                 )
-
-            # Update post stats
-            if vote == 'TRUE':
-                db.execute(
-                    text("UPDATE post_stats SET rumor_true_votes = rumor_true_votes + 1 WHERE post_id = :post_id"),
-                    {"post_id": post_id}
-                )
-            else:
-                db.execute(
-                    text("UPDATE post_stats SET rumor_false_votes = rumor_false_votes + 1 WHERE post_id = :post_id"),
-                    {"post_id": post_id}
-                )
+                
+                # Increment vote count for new vote
+                if vote == 'TRUE':
+                    db.execute(
+                        text("UPDATE post_stats SET rumor_true_votes = rumor_true_votes + 1 WHERE post_id = :post_id"),
+                        {"post_id": post_id}
+                    )
+                else:
+                    db.execute(
+                        text("UPDATE post_stats SET rumor_false_votes = rumor_false_votes + 1 WHERE post_id = :post_id"),
+                        {"post_id": post_id}
+                    )
 
             # Get updated stats
             stats_result = db.execute(
@@ -561,6 +589,74 @@ class PostService:
         except Exception as e:
             db.rollback()
             return False, f"Vote failed: {str(e)}", None
+
+    @staticmethod
+    def delete_vote(
+        db: Session,
+        post_id: int,
+        user_id: int
+    ) -> Tuple[bool, str, Optional[dict]]:
+        """
+        Delete/remove vote on rumor
+        Returns: (success, message, vote_data)
+        """
+        try:
+            # Check if user has voted on this post
+            vote_result = db.execute(
+                text("SELECT vote FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+                {"post_id": post_id, "user_id": user_id}
+            ).fetchone()
+
+            if not vote_result:
+                return False, "No vote found for this post", None
+
+            old_vote = vote_result[0]
+
+            # Delete the vote
+            db.execute(
+                text("DELETE FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+                {"post_id": post_id, "user_id": user_id}
+            )
+
+            # Decrement the vote count
+            if old_vote == 'TRUE':
+                db.execute(
+                    text("UPDATE post_stats SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1) WHERE post_id = :post_id"),
+                    {"post_id": post_id}
+                )
+            else:
+                db.execute(
+                    text("UPDATE post_stats SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1) WHERE post_id = :post_id"),
+                    {"post_id": post_id}
+                )
+
+            # Get updated stats
+            stats_result = db.execute(
+                text("""
+                    SELECT rumor_true_votes, rumor_false_votes
+                    FROM post_stats
+                    WHERE post_id = :post_id
+                """),
+                {"post_id": post_id}
+            ).fetchone()
+
+            true_votes, false_votes = stats_result
+            total_votes = true_votes + false_votes
+            percentage_true = (true_votes / total_votes * 100) if total_votes > 0 else 0
+
+            db.commit()
+
+            return True, "Vote removed successfully", {
+                "post_id": post_id,
+                "user_id": user_id,
+                "removed_vote": old_vote,
+                "total_votes_true": true_votes,
+                "total_votes_false": false_votes,
+                "percentage_true": round(percentage_true, 2)
+            }
+        except Exception as e:
+            db.rollback()
+            return False, f"Delete vote failed: {str(e)}", None
 
     @staticmethod
     def update_post(
@@ -643,3 +739,63 @@ class PostService:
         except Exception as e:
             db.rollback()
             return False, f"Delete failed: {str(e)}", None
+
+    @staticmethod
+    def get_all_posts(
+        db: Session,
+        user_id: Optional[int] = None,
+        limit: int = 20,
+        offset: int = 0,
+        post_type: Optional[str] = None
+    ) -> Tuple[bool, str, Optional[dict]]:
+        """
+        Get all posts with pagination
+        Returns: (success, message, posts_data)
+        """
+        try:
+            # Build base query
+            query = "SELECT id FROM posts WHERE deleted_at IS NULL"
+            params = {}
+            
+            if post_type:
+                query += " AND type = :post_type"
+                params["post_type"] = post_type
+            
+            query += " ORDER BY created_at DESC LIMIT :limit OFFSET :offset"
+            params["limit"] = limit
+            params["offset"] = offset
+            
+            # Get posts
+            posts_result = db.execute(
+                text(query),
+                params
+            ).fetchall()
+            
+            # Get detailed data for each post
+            posts = []
+            for post_row in posts_result:
+                post_id = post_row[0]
+                success, _, post_data = PostService.get_post(db, post_id, user_id)
+                if success:
+                    posts.append(post_data)
+            
+            # Get total count
+            count_query = "SELECT COUNT(*) FROM posts WHERE deleted_at IS NULL"
+            if post_type:
+                count_query += " AND type = :post_type"
+            
+            count_result = db.execute(
+                text(count_query),
+                params if post_type else {}
+            ).fetchone()
+            total_count = count_result[0] if count_result else 0
+            
+            return True, "Posts retrieved successfully", {
+                "posts": posts,
+                "total": total_count,
+                "limit": limit,
+                "offset": offset,
+                "has_more": (offset + limit) < total_count
+            }
+        except Exception as e:
+            return False, f"Get all posts failed: {str(e)}", None
