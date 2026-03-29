@@ -7,6 +7,7 @@ import bcrypt
 import jwt
 import secrets
 import string
+import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from config import (
@@ -59,6 +60,31 @@ class PasswordManager:
             return False, "Password must contain at least one digit"
         
         return True, "Password is valid"
+    
+    @staticmethod
+    def hash_refresh_token(refresh_token: str) -> str:
+        """Hash refresh token using bcrypt (12 rounds)"""
+        # Pre-hash with SHA-256 to bypass bcrypt's 72-byte truncation limit
+        # JWT tokens are long and start with identical headers/payloads
+        pre_hash = hashlib.sha256(refresh_token.encode('utf-8')).hexdigest()
+        salt = bcrypt.gensalt(rounds=12)
+        hashed = bcrypt.hashpw(pre_hash.encode('utf-8'), salt)
+        # Return as string (bcrypt format string, not UTF-8 encoded bytes)
+        return hashed.decode('utf-8')
+    
+    @staticmethod
+    def verify_refresh_token(refresh_token: str, refresh_token_hash: str) -> bool:
+        """Verify refresh token against bcrypt hash"""
+        try:
+            # Pre-hash the incoming token to match the storage mechanism
+            pre_hash = hashlib.sha256(refresh_token.encode('utf-8')).hexdigest()
+            # Convert hash string back to bytes in bcrypt format
+            hash_bytes = refresh_token_hash.encode('utf-8')
+            # Verify token
+            return bcrypt.checkpw(pre_hash.encode('utf-8'), hash_bytes)
+        except Exception:
+            # If hash format is invalid, return False
+            return False
 
 
 class JWTManager:

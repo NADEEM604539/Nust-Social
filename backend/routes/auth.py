@@ -266,9 +266,9 @@ async def refresh_token(
     return {
         "message": message,
         "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
         "token_type": tokens["token_type"],
-        "expires_in": tokens["expires_in"],
-        "user_id": tokens["user_id"]
+        "expires_in": tokens["expires_in"]
     }
 
 
@@ -297,6 +297,28 @@ async def logout(
         )
     
     return {"message": message}
+
+
+@router.post("/logout-all-devices", response_model=dict)
+async def logout_all_devices(
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Logout user from all devices (invalidate all sessions)
+    """
+    success, message, session_count = AuthService.logout_all_devices(
+        db=db,
+        user_id=user_id
+    )
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message
+        )
+    
+    return {"message": message, "sessions_deactivated": session_count}
 
 
 @router.get("/sessions", response_model=dict)

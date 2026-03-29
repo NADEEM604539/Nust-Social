@@ -322,6 +322,9 @@ class AuthService:
             # Create tokens for LOGIN and PASSWORD_RESET
             tokens = TokenManager.create_session_tokens(user_id)
             
+            # Hash refresh token before storing
+            refresh_token_hash = PasswordManager.hash_refresh_token(tokens["refresh_token"])
+            
             # Create session in database
             session_expires = datetime.utcnow() + timedelta(hours=24)
             refresh_expires = datetime.utcnow() + timedelta(days=30)
@@ -335,7 +338,7 @@ class AuthService:
                 {
                     "user_id": user_id,
                     "token": tokens["access_token"],
-                    "refresh_token": tokens["refresh_token"],
+                    "refresh_token": refresh_token_hash,
                     "expires_at": session_expires,
                     "refresh_expires_at": refresh_expires,
                     "ip_address": ip_address,
@@ -555,46 +558,155 @@ class AuthService:
         refresh_token: str
     ) -> Tuple[bool, str, Optional[dict]]:
         """
-        Generate new access token using refresh token
+        Generate new access and refresh tokens using refresh token (with rotation)
+        
+        THREE Strict Conditions MUST be met:
+        1. Session exists and is_active = 1
+        2. stored_refresh_hash is not null/empty
+        3. bcrypt.checkpw(incoming_token, stored_hash) == TRUE
+        
+        If ALL three pass:
+        - Generate new tokens
+        - Hash new refresh token
+        - REPLACE old hash with new hash in database
+        - Old refresh token becomes invalid immediately
+        
         Returns: (success, message, new_token_data)
         """
         try:
-            # Verify refresh token
-            new_tokens = TokenManager.refresh_access_token(refresh_token)
-            if new_tokens is None:
-                return False, "Invalid or expired refresh token", None
+            # === CONDITION 1: Verify incoming refresh token JWT ===
+            decoded = JWTManager.decode_token(refresh_token)
+            if decoded is None:
+                return False, "Token invalid or expired", None
             
-            user_id = new_tokens["user_id"]
+            if decoded.get("type") != "refresh":
+                return False, "Not a refresh token", None
             
-            # Find session with this refresh token
-            session_result = db.execute(
+            user_id = decoded.get("user_id")
+            if not user_id:
+                return False, "Invalid token payload", None
+            
+            # === CONDITION 1: Find ALL active sessions for user ===
+            session_results = db.execute(
                 text("""
-                    SELECT id, refresh_expires_at FROM user_sessions 
-                    WHERE user_id = :user_id AND refresh_token = :refresh_token AND is_active = 1
+                    SELECT id, refresh_expires_at, refresh_token, is_active
+                    FROM user_sessions 
+                    WHERE user_id = :user_id AND is_active = 1
                 """),
-                {"user_id": user_id, "refresh_token": refresh_token}
-            ).fetchone()
+                {"user_id": user_id}
+            ).fetchall()
             
-            if not session_result:
-                return False, "Session not found or inactive", None
+            if not session_results:
+                return False, "No active session found", None
             
-            session_id, refresh_expires_at = session_result
+            # === CONDITION 2 & 3: Find session with matching hash ===
+            matching_session_id = None
+            matching_refresh_expires = None
+            hash_verification_attempted = False
+            hash_verification_passed = False
             
-            # Check if refresh token expired
-            if datetime.utcnow() > refresh_expires_at:
-                return False, "Refresh token has expired", None
+            for session in session_results:
+                session_id, refresh_expires_at, stored_refresh_hash, is_active = session
+                
+                # CONDITION 1: Must be active
+                if not is_active:
+                    continue
+                
+                # CONDITION 2: Must have stored hash
+                if not stored_refresh_hash or stored_refresh_hash.strip() == "":
+                    continue
+                
+                # CONDITION 3: Hash must match using bcrypt
+                hash_verification_attempted = True
+                try:
+                    # Use bcrypt to verify - this is the CRITICAL check
+                    verify_result = PasswordManager.verify_refresh_token(refresh_token, stored_refresh_hash)
+                    
+                    if verify_result:
+                        # Token matches this session's hash
+                        hash_verification_passed = True
+                        
+                        # Check expiration
+                        if datetime.utcnow() > refresh_expires_at:
+                            return False, "Refresh token expired", None
+                        
+                        # Found matching session!
+                        matching_session_id = session_id
+                        matching_refresh_expires = refresh_expires_at
+                        break
+                except Exception:
+                    # Hash format invalid, try next session
+                    continue
             
-            # Update session with new access token
-            db.execute(
-                text("UPDATE user_sessions SET token = :token WHERE id = :id"),
-                {"token": new_tokens["access_token"], "id": session_id}
-            )
-            db.commit()
+            # If no match found - REJECT
+            if not matching_session_id:
+                if hash_verification_attempted and not hash_verification_passed:
+                    # Hash didn't match - possible reuse/theft
+                    return False, "Token mismatch", None
+                else:
+                    # No valid hash found in any session
+                    return False, "Invalid token", None
             
-            return True, "Token refreshed successfully", new_tokens
+            # === GENERATE NEW TOKENS ===
+            new_tokens = TokenManager.create_session_tokens(user_id)
+            new_access_token = new_tokens["access_token"]
+            new_refresh_token = new_tokens["refresh_token"]
+            
+            # === HASH NEW REFRESH TOKEN ===
+            new_refresh_token_hash = PasswordManager.hash_refresh_token(new_refresh_token)
+            
+            # Set new expiration times
+            new_access_expires = datetime.utcnow() + timedelta(hours=24)
+            new_refresh_expires = datetime.utcnow() + timedelta(days=30)
+            
+            # === REPLACE OLD HASH WITH NEW HASH ===
+            try:
+                update_result = db.execute(
+                    text("""
+                        UPDATE user_sessions 
+                        SET token = :new_access_token, 
+                            refresh_token = :new_refresh_token_hash, 
+                            expires_at = :new_access_expires, 
+                            refresh_expires_at = :new_refresh_expires,
+                            updated_at = NOW()
+                        WHERE id = :session_id 
+                            AND user_id = :user_id 
+                            AND is_active = 1
+                    """),
+                    {
+                        "new_access_token": new_access_token,
+                        "new_refresh_token_hash": new_refresh_token_hash,
+                        "new_access_expires": new_access_expires,
+                        "new_refresh_expires": new_refresh_expires,
+                        "session_id": matching_session_id,
+                        "user_id": user_id
+                    }
+                )
+                
+                db.commit()
+                
+                # Verify the update actually happened
+                if update_result.rowcount != 1:
+                    db.rollback()
+                    return False, "Database update failed", None
+                    
+            except Exception as db_error:
+                db.rollback()
+                return False, f"Update error: {str(db_error)}", None
+            
+            # === SUCCESS: Return new tokens ===
+            # OLD refresh token is now useless (hash was replaced)
+            # Next refresh attempt with old token will fail
+            return True, "Tokens rotated successfully", {
+                "access_token": new_access_token,
+                "refresh_token": new_refresh_token,
+                "token_type": "bearer",
+                "expires_in": 86400
+            }
+            
         except Exception as e:
             db.rollback()
-            return False, f"Token refresh failed: {str(e)}", None
+            return False, f"Refresh failed: {str(e)}", None
     
     @staticmethod
     def logout(
@@ -630,6 +742,37 @@ class AuthService:
         except Exception as e:
             db.rollback()
             return False, f"Logout failed: {str(e)}", None
+    
+    @staticmethod
+    def logout_all_devices(
+        db: Session,
+        user_id: int
+    ) -> Tuple[bool, str, int]:
+        """
+        Logout user from all devices by deactivating all sessions
+        Returns: (success, message, sessions_deactivated_count)
+        """
+        try:
+            # Get count of active sessions
+            count_result = db.execute(
+                text("SELECT COUNT(*) FROM user_sessions WHERE user_id = :user_id AND is_active = 1"),
+                {"user_id": user_id}
+            ).scalar()
+            
+            # Deactivate all sessions
+            db.execute(
+                text("UPDATE user_sessions SET is_active = 0 WHERE user_id = :user_id AND is_active = 1"),
+                {"user_id": user_id}
+            )
+            db.commit()
+            
+            if count_result > 0:
+                return True, f"Logged out from all {count_result} device(s). All sessions are now invalid.", count_result
+            else:
+                return True, "No active sessions found.", 0
+        except Exception as e:
+            db.rollback()
+            return False, f"Logout from all devices failed: {str(e)}", 0
     
     @staticmethod
     def get_active_sessions(

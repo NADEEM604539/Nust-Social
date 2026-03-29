@@ -45,17 +45,17 @@ CREATE TABLE users (
 CREATE TABLE user_sessions (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
-    token VARCHAR(500) NOT NULL UNIQUE,
-    refresh_token VARCHAR(500) UNIQUE,
+    token TEXT NOT NULL,
+    refresh_token TEXT,
     expires_at TIMESTAMP NOT NULL,
     refresh_expires_at TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
     ip_address VARCHAR(50),
     user_agent TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
-    INDEX idx_token (token),
     INDEX idx_expires_at (expires_at),
     INDEX idx_is_active (is_active)
 );
