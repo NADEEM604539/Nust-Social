@@ -251,16 +251,73 @@ class AuthService:
             
             # Handle EMAIL_VERIFICATION purpose
             if purpose == "EMAIL_VERIFICATION":
+                # Mark user as verified
                 db.execute(
                     text("UPDATE users SET is_verified = 1 WHERE id = :user_id"),
                     {"user_id": user_id}
                 )
+                
+                # Get user details
+                user_details = db.execute(
+                    text("SELECT username FROM users WHERE id = :user_id"),
+                    {"user_id": user_id}
+                ).fetchone()
+                
+                username = user_details[0] if user_details else None
+                
+                # Check if user_profile already exists
+                profile_check = db.execute(
+                    text("SELECT user_id FROM user_profiles WHERE user_id = :user_id"),
+                    {"user_id": user_id}
+                ).fetchone()
+                
+                # If profile doesn't exist, create it with username from registration
+                if not profile_check and username:
+                    db.execute(
+                        text("""
+                            INSERT INTO user_profiles (user_id, username, created_at, updated_at)
+                            VALUES (:user_id, :username, NOW(), NOW())
+                        """),
+                        {"user_id": user_id, "username": username}
+                    )
+                
                 db.commit()
                 return True, "Email verified successfully. You can now login.", {
                     "user_id": user_id,
                     "email": email,
                     "verified": True
                 }
+            
+            # Handle LOGIN purpose - also mark user as verified
+            if purpose == "LOGIN":
+                db.execute(
+                    text("UPDATE users SET is_verified = 1 WHERE id = :user_id"),
+                    {"user_id": user_id}
+                )
+                
+                # Get user details
+                user_details = db.execute(
+                    text("SELECT username FROM users WHERE id = :user_id"),
+                    {"user_id": user_id}
+                ).fetchone()
+                
+                username = user_details[0] if user_details else None
+                
+                # Check if user_profile already exists
+                profile_check = db.execute(
+                    text("SELECT user_id FROM user_profiles WHERE user_id = :user_id"),
+                    {"user_id": user_id}
+                ).fetchone()
+                
+                # If profile doesn't exist, create it with username from registration
+                if not profile_check and username:
+                    db.execute(
+                        text("""
+                            INSERT INTO user_profiles (user_id, username, created_at, updated_at)
+                            VALUES (:user_id, :username, NOW(), NOW())
+                        """),
+                        {"user_id": user_id, "username": username}
+                    )
             
             # Create tokens for LOGIN and PASSWORD_RESET
             tokens = TokenManager.create_session_tokens(user_id)

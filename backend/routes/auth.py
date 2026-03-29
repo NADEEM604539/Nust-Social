@@ -19,7 +19,7 @@ from database import get_db
 from services.auth_service import AuthService
 from utils.security import JWTManager
 
-router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 def get_current_user(
@@ -149,6 +149,16 @@ async def verify_otp(
             detail=message
         )
     
+    # Handle EMAIL_VERIFICATION response (different structure)
+    if purpose == "EMAIL_VERIFICATION":
+        return {
+            "message": message,
+            "user_id": tokens["user_id"],
+            "email": tokens["email"],
+            "verified": tokens["verified"]
+        }
+    
+    # Handle LOGIN and PASSWORD_RESET responses (with tokens)
     return {
         "message": "OTP verified successfully",
         "access_token": tokens["access_token"],

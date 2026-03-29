@@ -6,9 +6,11 @@ Purpose: Initialize FastAPI application, register routes, configure middleware, 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from config import APP_TITLE, APP_VERSION, APP_DESCRIPTION
 from database import db
 from routes import api_router
+import os
 
 # Lifespan context manager for startup and shutdown
 @asynccontextmanager
@@ -42,6 +44,11 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
+
+# Mount static files directory for media uploads
+if not os.path.exists("uploads"):
+    os.makedirs("uploads")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Health check endpoint
 @app.get("/", tags=["Health"])

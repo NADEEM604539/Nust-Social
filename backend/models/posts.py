@@ -3,7 +3,7 @@ Posts Model
 Purpose: Manages posts (confessions, rumors, announcements), comments, reactions, and tags
 """
 
-from sqlalchemy import Column, Integer, String, Text, Boolean, Enum, DateTime, BigInteger, ForeignKey, Index
+from sqlalchemy import Column, Integer, String, Text, Boolean, Enum, DateTime, BigInteger, ForeignKey, Index, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -52,12 +52,15 @@ class Post(Base):
     comments = relationship("Comment", back_populates="post", cascade="all, delete-orphan")
     reactions = relationship("Reaction", back_populates="post", cascade="all, delete-orphan")
     rumor_votes = relationship("RumorVote", back_populates="post", cascade="all, delete-orphan")
+    stats = relationship("PostStats", back_populates="post", uselist=False, cascade="all, delete-orphan")
+    views = relationship("PostView", back_populates="post", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_user_id", "user_id"),
         Index("idx_type", "type"),
         Index("idx_created_at", "created_at"),
         Index("idx_deleted_at", "deleted_at"),
+        Index("idx_approved", "is_approved"),
     )
 
 
@@ -74,6 +77,7 @@ class PostMedia(Base):
 
     __table_args__ = (
         Index("idx_post_id", "post_id"),
+        Index("idx_media_id", "media_id"),
     )
 
 
@@ -102,6 +106,7 @@ class Comment(Base):
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=False)
     deleted_at = Column(DateTime, nullable=True)
+    edited_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     post = relationship("Post", back_populates="comments")
@@ -129,6 +134,7 @@ class Reaction(Base):
     __table_args__ = (
         Index("idx_post_id", "post_id"),
         Index("idx_user_id", "user_id"),
+        UniqueConstraint("post_id", "user_id", name="uq_user_post_reaction"),
     )
 
 
@@ -138,7 +144,7 @@ class RumorVote(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     post_id = Column(BigInteger, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    vote_type = Column(Enum(RumorVoteType), nullable=False)
+    vote = Column(Enum(RumorVoteType), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     post = relationship("Post", back_populates="rumor_votes")
@@ -147,4 +153,42 @@ class RumorVote(Base):
     __table_args__ = (
         Index("idx_post_id", "post_id"),
         Index("idx_user_id", "user_id"),
+        UniqueConstraint("post_id", "user_id", name="uq_user_post_rumor_vote"),
+    )
+
+
+class PostStats(Base):
+    __tablename__ = "post_stats"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    post_id = Column(BigInteger, ForeignKey("posts.id", ondelete="CASCADE"), unique=True, nullable=False)
+    likes_count = Column(Integer, default=0)
+    comments_count = Column(Integer, default=0)
+    views_count = Column(Integer, default=0)
+    rumor_true_votes = Column(Integer, default=0)
+    rumor_false_votes = Column(Integer, default=0)
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    post = relationship("Post", back_populates="stats")
+
+    __table_args__ = (
+        Index("idx_post_id", "post_id"),
+    )
+
+
+class PostView(Base):
+    __tablename__ = "post_views"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    post_id = Column(BigInteger, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    viewed_at = Column(DateTime, default=datetime.utcnow)
+
+    post = relationship("Post", back_populates="views")
+
+    __table_args__ = (
+        Index("idx_post_id", "post_id"),
+        Index("idx_user_id", "user_id"),
+        Index("idx_viewed_at", "viewed_at"),
+        UniqueConstraint("post_id", "user_id", name="uq_post_user_view"),
     )

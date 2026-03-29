@@ -48,3 +48,32 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class FollowCreate(BaseModel):
+    """Follow request"""
+    following_id: int = None  # Optional, can be passed in URL
+    
+    class Config:
+        from_attributes = True
+
+
+class FollowResponse(BaseModel):
+    """Follow response"""
+    follower_id: int
+    following_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class UserFollowStats(BaseModel):
+    """User follow statistics"""
+    user_id: int
+    followers_count: int
+    following_count: int
+    is_following: bool
+    
+    class Config:
+        from_attributes = True
