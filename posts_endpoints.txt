@@ -1,0 +1,661 @@
+Posts
+
+
+POST
+/api/v1/posts
+Create Post
+
+Create a new post
+
+Parameters
+Try it out
+Name	Description
+authorization
+string
+(header)
+authorization
+Request body
+
+application/json
+Example Value
+Schema
+{
+  "type": "string",
+  "caption": "string",
+  "description": "string",
+  "is_anonymous": false,
+  "media_ids": [
+    0
+  ],
+  "tags": [
+    "string"
+  ]
+}
+Responses
+Code	Description	Links
+201	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+GET
+/api/v1/posts
+Get All Posts
+
+Get all posts with pagination (authentication optional)
+
+Parameters
+Try it out
+Name	Description
+limit
+integer
+(query)
+Default value : 20
+
+20
+maximum: 100
+minimum: 1
+offset
+integer
+(query)
+Default value : 0
+
+0
+minimum: 0
+post_type
+string | (string | null)
+(query)
+post_type
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+GET
+/api/v1/posts/{post_id}
+Get Post
+
+Get single post by ID (marks as viewed if authenticated)
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+PUT
+/api/v1/posts/{post_id}
+Update Post
+
+Update post (caption/description only, owner only)
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Request body
+
+application/json
+Example Value
+Schema
+{
+  "caption": "string",
+  "description": "string"
+}
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+DELETE
+/api/v1/posts/{post_id}
+Delete Post
+
+Delete post (soft delete, owner only)
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+POST
+/api/v1/posts/{post_id}/comment
+Add Comment
+
+Add comment to post Requires JWT authentication
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Request body
+
+application/json
+Example Value
+Schema
+{
+  "content": "string",
+  "is_anonymous": false
+}
+Responses
+Code	Description	Links
+201	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+DELETE
+/api/v1/posts/{post_id}/comment/{comment_id}
+Delete Comment
+
+Delete a comment (owner only) Requires JWT authentication
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+comment_id *
+integer
+(path)
+comment_id
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+POST
+/api/v1/posts/{post_id}/react
+React To Post
+
+React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY)
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Request body
+
+application/json
+Example Value
+Schema
+{
+  "type": "string"
+}
+Responses
+Code	Description	Links
+201	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+DELETE
+/api/v1/posts/{post_id}/react
+Unreact From Post
+
+Remove reaction from post
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+POST
+/api/v1/posts/{post_id}/vote
+Vote On Rumor
+
+Vote TRUE or FALSE on a rumor post
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Request body
+
+application/json
+Example Value
+Schema
+{
+  "vote": "string"
+}
+Responses
+Code	Description	Links
+201	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}
+No links
+
+DELETE
+/api/v1/posts/{post_id}/vote
+Delete Vote
+
+Remove vote from a rumor post
+
+Parameters
+Try it out
+Name	Description
+post_id *
+integer
+(path)
+post_id
+authorization
+string
+(header)
+authorization
+Responses
+Code	Description	Links
+200	
+Successful Response
+
+Media type
+
+application/json
+Controls Accept header.
+Example Value
+Schema
+{
+  "additionalProp1": {}
+}
+No links
+422	
+Validation Error
+
+Media type
+
+application/json
+Example Value
+Schema
+{
+  "detail": [
+    {
+      "loc": [
+        "string",
+        0
+      ],
+      "msg": "string",
+      "type": "string"
+    }
+  ]
+}

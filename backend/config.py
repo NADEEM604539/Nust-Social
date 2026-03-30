@@ -14,6 +14,7 @@ DB_PORT = int(os.getenv("DB_PORT", 3306))
 APP_TITLE = "NUST Social API"
 APP_VERSION = "1.0.0"
 APP_DESCRIPTION = "Backend API for NUST Social Platform"
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")

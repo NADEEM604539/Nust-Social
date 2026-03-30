@@ -281,12 +281,36 @@ class AuthService:
                         {"user_id": user_id, "username": username}
                     )
                 
+                # Create tokens and session for EMAIL_VERIFICATION
+                tokens = TokenManager.create_session_tokens(user_id)
+                
+                # Hash refresh token before storing
+                refresh_token_hash = PasswordManager.hash_refresh_token(tokens["refresh_token"])
+                
+                # Create session in database
+                session_expires = datetime.utcnow() + timedelta(hours=24)
+                refresh_expires = datetime.utcnow() + timedelta(days=30)
+                
+                db.execute(
+                    text("""
+                        INSERT INTO user_sessions 
+                        (user_id, token, refresh_token, expires_at, refresh_expires_at, is_active, ip_address, user_agent, created_at)
+                        VALUES (:user_id, :token, :refresh_token, :expires_at, :refresh_expires_at, 1, :ip_address, :user_agent, NOW())
+                    """),
+                    {
+                        "user_id": user_id,
+                        "token": tokens["access_token"],
+                        "refresh_token": refresh_token_hash,
+                        "expires_at": session_expires,
+                        "refresh_expires_at": refresh_expires,
+                        "ip_address": ip_address,
+                        "user_agent": user_agent
+                    }
+                )
+                
                 db.commit()
-                return True, "Email verified successfully. You can now login.", {
-                    "user_id": user_id,
-                    "email": email,
-                    "verified": True
-                }
+                
+                return True, "Email verified successfully. You can now use the app.", tokens
             
             # Handle LOGIN purpose - also mark user as verified
             if purpose == "LOGIN":

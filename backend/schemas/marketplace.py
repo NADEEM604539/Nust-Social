@@ -6,22 +6,31 @@ Purpose: Pydantic models for stores, products, orders, and payment management
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
 
 
-class AddressCreate(BaseModel):
-    street: str
-    city: str
-    state: Optional[str] = None
-    postal_code: Optional[str] = None
-    country: str
-    is_default: bool = False
+class StoreCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class StoreResponse(BaseModel):
+    id: int
+    owner_id: int
+    name: str
+    description: Optional[str]
+    is_active: bool
+    created_at: datetime
     
     class Config:
         from_attributes = True
 
 
 class ProductCreate(BaseModel):
-    name: str
+    title: str
     description: Optional[str] = None
     price: float
     stock: int
@@ -34,10 +43,11 @@ class ProductCreate(BaseModel):
 class ProductResponse(BaseModel):
     id: int
     store_id: int
-    name: str
+    title: str
     description: Optional[str]
     price: float
     stock: int
+    is_active: bool
     created_at: datetime
     
     class Config:
@@ -52,10 +62,40 @@ class OrderItemCreate(BaseModel):
         from_attributes = True
 
 
+class AddressCreate(BaseModel):
+    address: str
+    city: str
+    phone: str
+    
+    class Config:
+        from_attributes = True
+
+
+class AddressResponse(BaseModel):
+    id: int
+    order_id: int
+    address: str
+    city: str
+    phone: str
+    
+    class Config:
+        from_attributes = True
+
+
+class PaymentMethodEnum(str, Enum):
+    """Valid payment methods for orders"""
+    COD = "COD"
+    CARD = "CARD"
+    EASYPAISA = "EASYPaisa"
+    JAZZCASH = "JAZZCASH"
+
+
 class OrderCreate(BaseModel):
     items: List[OrderItemCreate]
-    shipping_address_id: int
-    payment_method: str  # COD, CARD, EASYPAISA, JAZZCASH
+    address: str
+    city: str
+    phone: str
+    payment_method: PaymentMethodEnum
     
     class Config:
         from_attributes = True
@@ -63,10 +103,42 @@ class OrderCreate(BaseModel):
 
 class OrderResponse(BaseModel):
     id: int
-    user_id: int
-    total_price: float
+    buyer_id: int
+    total_amount: float
     status: str
     created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class PaymentResponse(BaseModel):
+    id: int
+    order_id: int
+    method: str
+    status: str
+    transaction_ref: Optional[str]
+    refund_amount: Optional[float]
+    refund_status: str
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class OrderStatusEnum(str, Enum):
+    """Valid order statuses for Marketplace"""
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    SHIPPED = "SHIPPED"
+    DELIVERED = "DELIVERED"
+    CANCELLED = "CANCELLED"
+    REFUNDED = "REFUNDED"
+
+
+class OrderStatusUpdate(BaseModel):
+    """Request body for updating order status"""
+    status: OrderStatusEnum
     
     class Config:
         from_attributes = True

@@ -149,18 +149,9 @@ async def verify_otp(
             detail=message
         )
     
-    # Handle EMAIL_VERIFICATION response (different structure)
-    if purpose == "EMAIL_VERIFICATION":
-        return {
-            "message": message,
-            "user_id": tokens["user_id"],
-            "email": tokens["email"],
-            "verified": tokens["verified"]
-        }
-    
-    # Handle LOGIN and PASSWORD_RESET responses (with tokens)
+    # Return tokens for all purposes (EMAIL_VERIFICATION, LOGIN, PASSWORD_RESET)
     return {
-        "message": "OTP verified successfully",
+        "message": message,
         "access_token": tokens["access_token"],
         "refresh_token": tokens["refresh_token"],
         "token_type": tokens["token_type"],

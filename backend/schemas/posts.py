@@ -11,7 +11,7 @@ from datetime import datetime
 # ===== POST SCHEMAS =====
 class PostCreate(BaseModel):
     """Create new post"""
-    type: str = Field(..., description="RUMOR, CONFESSION, SOCIETY_POST, ANNOUNCEMENT, MARKETPLACE_POST")
+    type: str = Field(..., description="RUMOR, CONFESSION, SIMPLE_POST, SOCIETY_POST, ANNOUNCEMENT, MARKETPLACE_POST")
     caption: Optional[str] = Field(None, max_length=500)
     description: Optional[str] = Field(None)
     is_anonymous: bool = Field(False, description="Hide user identity")

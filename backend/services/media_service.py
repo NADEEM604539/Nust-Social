@@ -11,6 +11,7 @@ from typing import Optional, Tuple, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
+from config import API_BASE_URL
 
 
 class MediaService:
@@ -42,6 +43,65 @@ class MediaService:
         elif content_type in MediaService.ALLOWED_DOCUMENT_TYPES:
             return "DOCUMENT"
         return None
+    
+    @staticmethod
+    def register_media(
+        db: Session,
+        url: str,
+        file_type: str
+    ) -> Tuple[bool, str, Optional[dict]]:
+        """
+        Register media in database (frontend already saved the file)
+        Frontend stores file at /uploads/{filename}
+        Frontend sends the /uploads/{filename} URL and MIME type
+        Backend converts MIME type to category and stores in database
+        Returns: (success, message, media_data)
+        """
+        try:
+            # Convert MIME type to category (shorter for database storage)
+            media_category = "IMAGE"  # Default
+            if file_type.startswith("video"):
+                media_category = "VIDEO"
+            elif file_type.startswith("application/pdf"):
+                media_category = "DOCUMENT"
+            elif file_type.startswith("application"):
+                media_category = "DOCUMENT"
+            
+            print(f"DEBUG: Converting MIME type '{file_type}' to category '{media_category}'")
+            
+            # Store metadata in database
+            db.execute(
+                text("""
+                    INSERT INTO media (url, type, processing_status, file_size, created_at)
+                    VALUES (:url, :type, 'READY', 0, NOW())
+                """),
+                {
+                    "url": url,
+                    "type": media_category,
+                }
+            )
+            db.flush()
+            
+            # Get inserted media ID
+            media_result = db.execute(
+                text("SELECT id FROM media WHERE url = :url"),
+                {"url": url}
+            ).fetchone()
+            
+            db.commit()
+            media_id = media_result[0]
+            
+            print(f"DEBUG: Registered media {url} with ID {media_id}")
+            
+            return True, "Media registered successfully", {
+                "id": media_id,
+                "url": url,
+                "type": media_category,
+            }
+        except Exception as e:
+            db.rollback()
+            print(f"DEBUG: Error registering media: {str(e)}")
+            return False, f"Media registration failed: {str(e)}", None
     
     @staticmethod
     async def upload_media(
@@ -77,10 +137,10 @@ class MediaService:
             with open(file_path, "wb") as f:
                 f.write(file_content)
             
-            # Generate URL (relative to server root)
-            url = f"/uploads/{unique_filename}"
+            # Generate absolute URL
+            url = f"{API_BASE_URL}/uploads/{unique_filename}"
             
-            # Store metadata in database
+            # Store metadata in database (store MIME type, not just category)
             db.execute(
                 text("""
                     INSERT INTO media (url, type, processing_status, file_size, created_at)
@@ -88,7 +148,7 @@ class MediaService:
                 """),
                 {
                     "url": url,
-                    "type": media_type,
+                    "type": file.content_type,
                     "file_size": file_size
                 }
             )
@@ -106,7 +166,7 @@ class MediaService:
             return True, "Media uploaded successfully", {
                 "id": media_id,
                 "url": url,
-                "type": media_type,
+                "type": file.content_type,
                 "file_size": file_size
             }
         except Exception as e:

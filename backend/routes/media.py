@@ -1,9 +1,11 @@
 """
 Media Routes
-Purpose: API endpoints for media upload, retrieval, deletion, and listing
+Purpose: API endpoints for media registration, retrieval, deletion, and listing
+Frontend stores files, backend only manages metadata
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
@@ -11,6 +13,35 @@ from schemas.media import MediaUploadResponse, MediaResponse, MediaListResponse,
 from services.media_service import MediaService
 
 router = APIRouter(prefix="/media", tags=["Media"])
+
+
+# Request schema for media registration
+class MediaRegisterRequest(BaseModel):
+    url: str
+    type: str
+
+
+@router.post("/register", response_model=dict, status_code=201)
+async def register_media(
+    request: MediaRegisterRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Register media metadata (frontend already saved the file)
+    Frontend sends the URL path (/uploads/{filename})
+    Backend stores this URL as-is in database
+    """
+    success, message, data = MediaService.register_media(db, request.url, request.type)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    return {
+        "message": message,
+        "id": data["id"],
+        "url": data["url"],
+        "type": data["type"]
+    }
 
 
 @router.post("", response_model=dict, status_code=201)

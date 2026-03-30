@@ -10,6 +10,7 @@ from routes.media import router as media_router
 from routes.users import router as users_router
 from routes.societies import router as societies_router
 from routes.events_global import router as events_router
+from routes.marketplace import router as marketplace_router
 
 # Main router
 api_router = APIRouter(prefix="/api/v1")
@@ -21,5 +22,6 @@ api_router.include_router(media_router)
 api_router.include_router(users_router)
 api_router.include_router(societies_router)
 api_router.include_router(events_router)
+api_router.include_router(marketplace_router)
 
 __all__ = ["api_router"]

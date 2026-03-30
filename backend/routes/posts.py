@@ -129,23 +129,27 @@ async def get_all_posts(
 @router.get("/{post_id}", response_model=dict)
 async def get_post(
     post_id: int,
-    current_user: Optional[int] = Depends(get_current_user),
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
-    """Get single post by ID (marks as viewed if authenticated)"""
+    """Get single post by ID with comments (marks as viewed if authenticated)"""
+    # Extract user_id from token if provided
+    user_id = None
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            user_id = JWTManager.get_user_id_from_token(parts[1])
+    
     success, message, data = PostService.get_post(
         db=db,
         post_id=post_id,
-        user_id=current_user
+        user_id=user_id
     )
     
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
     
-    return {
-        "message": "Post retrieved",
-        "post": data
-    }
+    return data
 
 
 # ===== ADD COMMENT =====
