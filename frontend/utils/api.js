@@ -129,6 +129,17 @@ export function setTokens(accessToken, refreshToken, userId, email) {
     if (userId) localStorage.setItem(TOKEN_KEYS.USER_ID, userId.toString());
     if (email) localStorage.setItem(TOKEN_KEYS.EMAIL, email);
     
+    // Also set cookies for server-side middleware
+    const expiryDays = 1; // 1 day
+    const expiryDate = new Date();
+    expiryDate.setTime(expiryDate.getTime() + (expiryDays * 24 * 60 * 60 * 1000));
+    const expires = `expires=${expiryDate.toUTCString()}`;
+    
+    document.cookie = `access_token=${accessToken};${expires};path=/`;
+    if (refreshToken) document.cookie = `refresh_token=${refreshToken};${expires};path=/`;
+    if (userId) document.cookie = `user_id=${userId};${expires};path=/`;
+    if (email) document.cookie = `user_email=${email};${expires};path=/`;
+    
     // Remove temporary pending data
     try {
       localStorage.removeItem('pending_email');
@@ -148,6 +159,12 @@ export function clearTokens() {
     localStorage.removeItem(TOKEN_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(TOKEN_KEYS.USER_ID);
     localStorage.removeItem(TOKEN_KEYS.EMAIL);
+    
+    // Also clear cookies
+    document.cookie = `access_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+    document.cookie = `refresh_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+    document.cookie = `user_id=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
+    document.cookie = `user_email=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
   } catch (err) {
     console.warn('Failed to clear tokens from localStorage:', err);
   }

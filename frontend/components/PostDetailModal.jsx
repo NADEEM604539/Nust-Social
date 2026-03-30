@@ -51,23 +51,42 @@ export default function PostDetailModal({ postId }) {
         const token = getAccessToken();
         console.log('Fetching post with ID:', postId);
         
-        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
-          method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        try {
+          const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+            method: 'GET',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
 
-        console.log('Post Response:', response);
+          console.log('Post Response:', response);
 
-        if (response && response.id) {
-          setPost(response);
-          setCurrentReaction(response.user_reaction || null);
-          setLikeCount(response.stats?.likes_count || 0);
-          
-          if (response.comments && Array.isArray(response.comments)) {
-            setComments(response.comments);
+          if (response && response.id) {
+            setPost(response);
+            setCurrentReaction(response.user_reaction || null);
+            setLikeCount(response.stats?.likes_count || 0);
+            
+            if (response.comments && Array.isArray(response.comments)) {
+              setComments(response.comments);
+            }
+          } else {
+            setError('Invalid post data');
           }
-        } else {
-          setError('Invalid post data');
+        } catch (apiError) {
+          // Handle specific API errors
+          if (apiError.message.includes('404') || apiError.message.includes('not found')) {
+            setError('Post not found. It may have been deleted or is not accessible.');
+            // Redirect to home after 2 seconds
+            setTimeout(() => {
+              router.push('/');
+            }, 2000);
+          } else if (apiError.message.includes('401') || apiError.message.includes('Unauthorized')) {
+            setError('You do not have permission to view this post. Please log in.');
+            // Redirect to login after 2 seconds
+            setTimeout(() => {
+              router.push('/auth/login?redirect=' + encodeURIComponent(`/post/${postId}`));
+            }, 2000);
+          } else {
+            setError(apiError.message || 'Failed to load post');
+          }
         }
       } catch (err) {
         console.error('Error fetching post:', err);
@@ -208,10 +227,26 @@ export default function PostDetailModal({ postId }) {
 
   if (!post && !loading && error) {
     return (
-      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={handleClose}>
-        <div className={`${isDark ? 'bg-gray-900' : 'bg-white'} rounded-lg p-6 max-w-2xl w-full mx-4`} onClick={(e) => e.stopPropagation()}>
-          <p className={isDark ? 'text-red-400' : 'text-red-600'}>{error}</p>
-          <button onClick={handleClose} className="mt-4 px-4 py-2 bg-pink-500 text-white rounded">Close</button>
+      <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={handleClose}>
+        <div className={`${isDark ? 'bg-gray-900' : 'bg-white'} rounded-lg p-8 max-w-md w-full mx-4`} onClick={(e) => e.stopPropagation()}>
+          <div className="text-center">
+            <div className="text-5xl mb-4">❌</div>
+            <h2 className={`text-xl font-semibold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              Post Not Found
+            </h2>
+            <p className={`mb-6 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+              {error}
+            </p>
+            <p className={`text-sm mb-4 ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+              Redirecting to home...
+            </p>
+            <button 
+              onClick={handleClose} 
+              className="w-full px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white rounded-lg font-semibold transition-colors"
+            >
+              Back to Feed
+            </button>
+          </div>
         </div>
       </div>
     );
