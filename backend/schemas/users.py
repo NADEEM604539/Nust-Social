@@ -18,9 +18,12 @@ class UserCreate(BaseModel):
 
 class UserProfileUpdate(BaseModel):
     username: Optional[str] = None
-    name: Optional[str] = None
+    full_name: Optional[str] = None  # Maps to 'name' in DB
+    name: Optional[str] = None  # Alternative field name
     bio: Optional[str] = None
-    batch_year: Optional[int] = None
+    batch: Optional[int] = None  # Maps to 'batch_year' in DB
+    batch_year: Optional[int] = None  # Alternative field name
+    department: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -32,7 +35,10 @@ class UserProfileResponse(BaseModel):
     name: Optional[str]
     bio: Optional[str]
     batch_year: Optional[int]
+    department: Optional[str]
+    email: Optional[str]
     created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True

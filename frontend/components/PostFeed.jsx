@@ -244,6 +244,62 @@ export default function PostFeed() {
     }
   };
 
+  const handleFollow = async (userId) => {
+    try {
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to follow users');
+        return;
+      }
+
+      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Update posts to reflect follow status
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.user_id === userId) {
+            return { ...post, is_following: true };
+          }
+          return post;
+        })
+      );
+    } catch (err) {
+      console.error('Error following user:', err);
+      setError(err.message || 'Failed to follow user');
+    }
+  };
+
+  const handleUnfollow = async (userId) => {
+    try {
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to unfollow users');
+        return;
+      }
+
+      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Update posts to reflect follow status
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.user_id === userId) {
+            return { ...post, is_following: false };
+          }
+          return post;
+        })
+      );
+    } catch (err) {
+      console.error('Error unfollowing user:', err);
+      setError(err.message || 'Failed to unfollow user');
+    }
+  };
+
   return (
     <div className="w-full space-y-4">
       {/* Error Message */}
@@ -294,6 +350,8 @@ export default function PostFeed() {
               onDelete={handleDelete}
               onReact={handleReact}
               onComment={handleComment}
+              onFollow={handleFollow}
+              onUnfollow={handleUnfollow}
             />
           ))}
 

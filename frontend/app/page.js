@@ -1,45 +1,14 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState } from 'react';
 import Navigation from '@/components/Navigation';
 import PostFeed from '@/components/PostFeed';
 import CreatePostButton from '@/components/CreatePostButton';
 import { useTheme } from '@/context/ThemeContext';
-import { getAccessToken } from '@/utils/api';
 
 export default function HomePage() {
-  const router = useRouter();
   const { isDark } = useTheme();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) {
-      router.push('/auth/login');
-      return;
-    }
-    setIsAuthenticated(true);
-    setIsLoading(false);
-  }, [router]);
-
-  if (isLoading || !isAuthenticated) {
-    return (
-      <div
-        className={`flex items-center justify-center h-screen ${
-          isDark ? 'bg-black' : 'bg-white'
-        }`}
-      >
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-full border-4 border-transparent border-t-pink-500 border-r-pink-500 animate-spin" />
-          <p className={`text-lg font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-            Loading...
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const [refreshFeed, setRefreshFeed] = useState(false);
 
   return (
     <div className={`flex min-h-screen ${isDark ? 'bg-black' : 'bg-white'}`}>

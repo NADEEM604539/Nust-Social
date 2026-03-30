@@ -271,14 +271,14 @@ class AuthService:
                     {"user_id": user_id}
                 ).fetchone()
                 
-                # If profile doesn't exist, create it with username from registration
-                if not profile_check and username:
+                # If profile doesn't exist, create it
+                if not profile_check:
                     db.execute(
                         text("""
-                            INSERT INTO user_profiles (user_id, username, created_at, updated_at)
-                            VALUES (:user_id, :username, NOW(), NOW())
+                            INSERT INTO user_profiles (user_id, created_at, updated_at)
+                            VALUES (:user_id, NOW(), NOW())
                         """),
-                        {"user_id": user_id, "username": username}
+                        {"user_id": user_id}
                     )
                 
                 # Create tokens and session for EMAIL_VERIFICATION
@@ -333,14 +333,14 @@ class AuthService:
                     {"user_id": user_id}
                 ).fetchone()
                 
-                # If profile doesn't exist, create it with username from registration
-                if not profile_check and username:
+                # If profile doesn't exist, create it
+                if not profile_check:
                     db.execute(
                         text("""
-                            INSERT INTO user_profiles (user_id, username, created_at, updated_at)
-                            VALUES (:user_id, :username, NOW(), NOW())
+                            INSERT INTO user_profiles (user_id, created_at, updated_at)
+                            VALUES (:user_id, NOW(), NOW())
                         """),
-                        {"user_id": user_id, "username": username}
+                        {"user_id": user_id}
                     )
             
             # Create tokens for LOGIN and PASSWORD_RESET

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTheme } from '@/context/ThemeContext';
+import { clearTokens } from '@/utils/api';
 
 export default function Navigation() {
   const router = useRouter();
@@ -23,12 +24,18 @@ export default function Navigation() {
     { name: 'Notifications', icon: '🔔', path: '/notifications', section: 'notifications' },
   ];
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('user_id');
-    localStorage.removeItem('user_email');
-    router.push('/auth/login');
+  const handleLogout = async () => {
+    try {
+      // Clear all tokens from localStorage and cookies
+      clearTokens();
+      
+      // Hard redirect with page reload to clear any cached auth state
+      // and force middleware to re-evaluate
+      window.location.href = '/auth/login';
+    } catch (error) {
+      console.error('Logout error:', error);
+      window.location.href = '/auth/login';
+    }
   };
 
   return (
@@ -39,7 +46,7 @@ export default function Navigation() {
           isDark
             ? 'bg-black border-gray-800'
             : 'bg-white border-gray-200'
-        } border-r ${isSidebarOpen ? 'w-64' : 'w-20'}`}
+        } border-r ${isSidebarOpen ? 'w-90' : 'w-25'}`}
       >
         {/* Logo */}
         <Link

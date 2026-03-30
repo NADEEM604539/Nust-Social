@@ -93,12 +93,12 @@ CREATE TABLE password_history (
 
 CREATE TABLE user_profiles (
     user_id BIGINT PRIMARY KEY,
-    username VARCHAR(50) UNIQUE NOT NULL,
     name VARCHAR(100),
     bio TEXT,
     avatar_media_id BIGINT NULL,
     email_verified_domain VARCHAR(50),
     batch_year INT,
+    department VARCHAR(100),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

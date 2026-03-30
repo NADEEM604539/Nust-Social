@@ -59,14 +59,16 @@ def get_current_user(
 
 @router.get("/profile/{user_id}", response_model=UserProfileResponse)
 async def get_user_profile(user_id: int, db: Session = Depends(get_db)):
-    """Get user profile by ID"""
+    """Get user profile by ID (includes email)"""
     try:
-        # Get profile from database
+        # Get profile from database with username and email from users table
         profile = db.execute(
             text("""
-                SELECT user_id, username, name, bio, batch_year, created_at, updated_at
-                FROM user_profiles
-                WHERE user_id = :user_id
+                SELECT p.user_id, p.name, p.bio, p.batch_year, p.department, 
+                       p.created_at, p.updated_at, u.email, u.username
+                FROM user_profiles p
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.user_id = :user_id
             """),
             {"user_id": user_id}
         ).fetchone()
@@ -79,12 +81,14 @@ async def get_user_profile(user_id: int, db: Session = Depends(get_db)):
         
         return {
             "user_id": profile[0],
-            "username": profile[1],
-            "name": profile[2],
-            "bio": profile[3],
-            "batch_year": profile[4],
+            "username": profile[8],
+            "name": profile[1],
+            "bio": profile[2],
+            "batch_year": profile[3],
+            "department": profile[4],
             "created_at": profile[5],
-            "updated_at": profile[6]
+            "updated_at": profile[6],
+            "email": profile[7]
         }
     except HTTPException:
         raise
@@ -93,6 +97,35 @@ async def get_user_profile(user_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve profile: {str(e)}"
         )
+
+
+@router.put("/profile", response_model=UserProfileResponse)
+async def update_user_profile_current(
+    profile_update: UserProfileUpdate, 
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update current user profile"""
+    success, message, data = UserService.update_user_profile(
+        db=db,
+        user_id=current_user,
+        profile_data=profile_update
+    )
+    
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+    
+    return {
+        "user_id": data["user_id"],
+        "username": data["username"],
+        "name": data["name"],
+        "bio": data["bio"],
+        "batch_year": data["batch_year"],
+        "department": data["department"],
+        "email": data.get("email"),
+        "created_at": data["created_at"],
+        "updated_at": data["updated_at"]
+    }
 
 
 @router.put("/profile/{user_id}", response_model=UserProfileResponse)
@@ -125,6 +158,8 @@ async def update_user_profile(
         "name": data["name"],
         "bio": data["bio"],
         "batch_year": data["batch_year"],
+        "department": data["department"],
+        "email": data.get("email"),
         "created_at": data["created_at"],
         "updated_at": data["updated_at"]
     }
@@ -182,14 +217,27 @@ async def get_followers(
     user_id: int,
     limit: int = 50,
     offset: int = 0,
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Get followers of a user"""
+    # Extract current user ID from token if provided
+    current_user_id = None
+    if authorization:
+        try:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+                current_user_id = JWTManager.get_user_id_from_token(token)
+        except:
+            pass
+    
     success, message, data = UserService.get_followers(
         db=db,
         user_id=user_id,
         limit=limit,
-        offset=offset
+        offset=offset,
+        current_user_id=current_user_id
     )
     
     if not success:
@@ -206,14 +254,27 @@ async def get_following(
     user_id: int,
     limit: int = 50,
     offset: int = 0,
+    authorization: str = Header(None),
     db: Session = Depends(get_db)
 ):
     """Get users that a user is following"""
+    # Extract current user ID from token if provided
+    current_user_id = None
+    if authorization:
+        try:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                token = parts[1]
+                current_user_id = JWTManager.get_user_id_from_token(token)
+        except:
+            pass
+    
     success, message, data = UserService.get_following(
         db=db,
         user_id=user_id,
         limit=limit,
-        offset=offset
+        offset=offset,
+        current_user_id=current_user_id
     )
     
     if not success:

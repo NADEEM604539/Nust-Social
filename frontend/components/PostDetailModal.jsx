@@ -22,6 +22,8 @@ export default function PostDetailModal({ postId }) {
   const [isReacting, setIsReacting] = useState(false);
   const [reactionLocked, setReactionLocked] = useState(false);
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   const getTimeAgo = (timestamp) => {
     if (!timestamp) return 'Unknown';
@@ -63,6 +65,7 @@ export default function PostDetailModal({ postId }) {
             setPost(response);
             setCurrentReaction(response.user_reaction || null);
             setLikeCount(response.stats?.likes_count || 0);
+            setIsFollowing(response.is_following || false);
             
             if (response.comments && Array.isArray(response.comments)) {
               setComments(response.comments);
@@ -221,6 +224,56 @@ export default function PostDetailModal({ postId }) {
     }
   };
 
+  const handleFollow = async () => {
+    if (isFollowLoading || !post || post.is_owner || post.is_anonymous) return;
+
+    try {
+      setIsFollowLoading(true);
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to follow users');
+        return;
+      }
+
+      await apiRequest(`${API_ENDPOINTS.USERS}/${post.user_id}/follow`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setIsFollowing(true);
+    } catch (error) {
+      console.error('Error following user:', error);
+      setError('Failed to follow user');
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
+
+  const handleUnfollow = async () => {
+    if (isFollowLoading || !post || post.is_owner || post.is_anonymous) return;
+
+    try {
+      setIsFollowLoading(true);
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to unfollow users');
+        return;
+      }
+
+      await apiRequest(`${API_ENDPOINTS.USERS}/${post.user_id}/follow`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setIsFollowing(false);
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      setError('Failed to unfollow user');
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
+
   const handleClose = () => {
     router.back();
   };
@@ -283,21 +336,40 @@ export default function PostDetailModal({ postId }) {
             </div>
 
             <div className="flex flex-col h-full">
-              <div className={`px-4 py-3 border-b ${isDark ? 'border-gray-800' : 'border-gray-200'} flex items-center gap-3`}>
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                  {post.is_anonymous ? '🔒' : (post.username?.charAt(0) || 'U').toUpperCase()}
+              <div className={`px-4 py-3 border-b ${isDark ? 'border-gray-800' : 'border-gray-200'} flex items-center gap-3 justify-between`}>
+                <div className="flex items-center gap-3 flex-1">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    {post.is_anonymous ? '🔒' : (post.username?.charAt(0) || 'U').toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    {post.is_anonymous ? (
+                      <p className={`font-semibold text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                        🔒 {post.encrypted_name?.substring(0, 8) || 'Anonymous'}
+                      </p>
+                    ) : (
+                      <Link href={`/user/profile/${post.user_id}`} className={`font-semibold text-sm hover:underline ${isDark ? 'text-white' : 'text-black'}`}>
+                        {post.username || 'Unknown'}
+                      </Link>
+                    )}
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  {post.is_anonymous ? (
-                    <p className={`font-semibold text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      🔒 {post.encrypted_name?.substring(0, 8) || 'Anonymous'}
-                    </p>
-                  ) : (
-                    <Link href={`/user/profile/${post.user_id}`} className={`font-semibold text-sm hover:underline ${isDark ? 'text-white' : 'text-black'}`}>
-                      {post.username || 'Unknown'}
-                    </Link>
-                  )}
-                </div>
+                {!post.is_owner && post.is_following !== null && (
+                  <button
+                    onClick={isFollowing ? handleUnfollow : handleFollow}
+                    disabled={isFollowLoading}
+                    className={`text-xs px-3 py-1 rounded-full font-medium transition-all duration-200 whitespace-nowrap mr-10 ${
+                      isFollowing
+                        ? isDark
+                          ? 'bg-gray-700 text-white hover:bg-gray-600'
+                          : 'bg-gray-200 text-gray-900 hover:bg-gray-300'
+                        : isDark
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isFollowLoading ? '...' : isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                )}
               </div>
 
               <div className={`px-4 py-3 border-b ${isDark ? 'border-gray-800' : 'border-gray-200'}`}>

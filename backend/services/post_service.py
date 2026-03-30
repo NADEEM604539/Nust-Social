@@ -227,6 +227,7 @@ class PostService:
             # Get user reaction if user_id provided
             user_reaction = None
             user_rumor_vote = None
+            is_following = None
             if user_id:
                 reaction_result = db.execute(
                     text("SELECT reaction_type FROM reactions WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
@@ -240,6 +241,14 @@ class PostService:
                         {"post_id": post_id, "user_id": user_id}
                     ).fetchone()
                     user_rumor_vote = vote_result[0] if vote_result else None
+                
+                # Check follow status for non-anonymous posts (but not for own posts)
+                if not is_anonymous and post_user_id and user_id != post_user_id:
+                    follow_result = db.execute(
+                        text("SELECT 1 FROM follows WHERE follower_id = :user_id AND following_id = :following_id"),
+                        {"user_id": user_id, "following_id": post_user_id}
+                    ).fetchone()
+                    is_following = follow_result is not None
 
             # Get comments with author information
             comments_results = db.execute(
@@ -285,6 +294,7 @@ class PostService:
                 "is_anonymous": is_anonymous,
                 "is_approved": is_approved,
                 "is_owner": user_id == post_user_id if user_id else False,
+                "is_following": is_following,
                 "media": media,
                 "tags": tags,
                 "comments": comments,
@@ -897,12 +907,32 @@ class PostService:
                 reactions_results = db.execute(text(reactions_query), {"user_id": user_id}).fetchall()
                 user_reactions = {row[0]: row[1] for row in reactions_results}
             
+            # 5. Get follow status for all post authors (if logged in)
+            follow_status = {}
+            if user_id:
+                # Get all unique non-anonymous post authors
+                author_ids = list(set([row[1] for row in posts_result if row[1] is not None and not row[5]]))
+                if author_ids:
+                    placeholders = ','.join([str(aid) for aid in author_ids])
+                    follow_query = f"""
+                        SELECT following_id
+                        FROM follows
+                        WHERE follower_id = :user_id AND following_id IN ({placeholders})
+                    """
+                    follow_results = db.execute(text(follow_query), {"user_id": user_id}).fetchall()
+                    follow_status = {row[0]: True for row in follow_results}
+            
             # Assemble posts
             posts = []
             for post_row in posts_result:
                 (post_id, post_user_id, post_type, caption, description, is_anonymous, is_approved,
                  created_at, edited_at, encrypted_name, username, likes_count, comments_count, views_count,
                  rumor_true_votes, rumor_false_votes) = post_row
+                
+                # Determine follow_status: None for anonymous or own posts, True/False for other non-anonymous posts
+                is_following = None
+                if not is_anonymous and post_user_id and user_id != post_user_id:
+                    is_following = follow_status.get(post_user_id, False)
                 
                 posts.append({
                     "id": post_id,
@@ -915,6 +945,7 @@ class PostService:
                     "is_anonymous": is_anonymous,
                     "is_approved": is_approved,
                     "is_owner": user_id == post_user_id if user_id else False,
+                    "is_following": is_following,
                     "media": media_by_post.get(post_id, []),
                     "tags": tags_by_post.get(post_id, []),
                     "stats": {
@@ -935,7 +966,7 @@ class PostService:
             count_result = db.execute(text(count_query), count_params).fetchone()
             total_count = count_result[0] if count_result else 0
             
-            print(f"✓ Feed loaded {len(posts)} posts using 4 optimized queries (reduced from 40+ queries)")
+            print(f"✓ Feed loaded {len(posts)} posts using 5 optimized queries (reduced from 40+ queries)")
             
             return True, "Posts retrieved successfully", {
                 "posts": posts,

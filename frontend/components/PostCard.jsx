@@ -5,7 +5,7 @@ import Link from 'next/link';
 import MediaCarousel from './MediaCarousel';
 import { useTheme } from '@/context/ThemeContext';
 
-export default function PostCard({ post, onDelete, onReact, onComment }) {
+export default function PostCard({ post, onDelete, onReact, onComment, onFollow, onUnfollow }) {
   const { isDark } = useTheme();
   const [currentReaction, setCurrentReaction] = useState(post.user_reaction || null);
   const [likeCount, setLikeCount] = useState(post.stats?.likes_count || 0);
@@ -13,6 +13,8 @@ export default function PostCard({ post, onDelete, onReact, onComment }) {
   const [isReacting, setIsReacting] = useState(false);
   const [reactionLocked, setReactionLocked] = useState(false);
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(post.is_following || false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   // Sync state when post data changes (from parent PostFeed updates)
   // This is the source of truth - always sync from parent
@@ -20,7 +22,8 @@ export default function PostCard({ post, onDelete, onReact, onComment }) {
     console.log(`PostCard[${post.id}]: Syncing from parent - reaction: ${post.user_reaction}, likes: ${post.stats?.likes_count}`);
     setCurrentReaction(post.user_reaction || null);
     setLikeCount(post.stats?.likes_count || 0);
-  }, [post.id, post.stats?.likes_count, post.user_reaction]);
+    setIsFollowing(post.is_following || false);
+  }, [post.id, post.stats?.likes_count, post.user_reaction, post.is_following]);
 
   // Countdown timer for reaction lock
   useEffect(() => {
@@ -88,7 +91,25 @@ export default function PostCard({ post, onDelete, onReact, onComment }) {
 
   const handleLike = () => handleReaction('LIKE');
 
+  const handleFollow = async () => {
+    if (isFollowLoading || post.is_owner || post.is_anonymous) return;
 
+    try {
+      setIsFollowLoading(true);
+      
+      if (isFollowing && onUnfollow) {
+        await onUnfollow(post.user_id);
+        setIsFollowing(false);
+      } else if (!isFollowing && onFollow) {
+        await onFollow(post.user_id);
+        setIsFollowing(true);
+      }
+    } catch (error) {
+      console.error('Error toggling follow:', error);
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
 
   // Time formatter
   const getTimeAgo = (timestamp) => {
@@ -125,20 +146,39 @@ export default function PostCard({ post, onDelete, onReact, onComment }) {
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
             {post.is_anonymous ? '🔒' : post.username?.charAt(0).toUpperCase()}
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1">
             {post.is_anonymous ? (
               <span className={`font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                 {post.encrypted_name?.substring(0, 8) || 'Anonymous'}
               </span>
             ) : (
-              <Link
-                href={`/user/profile/${post.user_id}`}
-                className={`font-semibold hover:underline ${
-                  isDark ? 'text-white' : 'text-black'
-                }`}
-              >
-                {post.username || 'Unknown'}
-              </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/user/profile/${post.user_id}`}
+                  className={`font-semibold hover:underline ${
+                    isDark ? 'text-white' : 'text-black'
+                  }`}
+                >
+                  {post.username || 'Unknown'}
+                </Link>
+                {!post.is_owner && post.is_following !== null && (
+                  <button
+                    onClick={handleFollow}
+                    disabled={isFollowLoading}
+                    className={`text-xs px-2 py-1 rounded-full font-medium transition-all duration-200 ${
+                      isFollowing
+                        ? isDark
+                          ? 'bg-gray-700 text-white hover:bg-gray-600'
+                          : 'bg-gray-200 text-gray-900 hover:bg-gray-300'
+                        : isDark
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    } ${isFollowLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {isFollowLoading ? '...' : isFollowing ? 'Following' : 'Follow'}
+                  </button>
+                )}
+              </div>
             )}
             <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
               {getTimeAgo(post.created_at)}
