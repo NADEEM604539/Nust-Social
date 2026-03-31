@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Navigation from '@/components/Navigation';
 import PostFeed from '@/components/PostFeed';
 import CreatePostButton from '@/components/CreatePostButton';
+import SuggestedUsers from '@/components/SuggestedUsers';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function HomePage() {
@@ -32,55 +33,8 @@ export default function HomePage() {
 
           {/* Right Sidebar - Suggestions (Desktop only, >lg) */}
           <div className="hidden lg:flex w-72 flex-col flex-shrink-0 fixed right-0 top-20 h-screen overflow-y-auto pr-4 pt-4 gap-4">
-            {/* Suggested Users Card */}
-            <div
-              className={`rounded-lg p-4 ${
-                isDark
-                  ? 'bg-gray-900 border border-gray-800'
-                  : 'bg-gray-50 border border-gray-200'
-              }`}
-            >
-              <h2
-                className={`font-bold text-lg mb-4 ${
-                  isDark ? 'text-white' : 'text-black'
-                }`}
-              >
-                Suggested For You
-              </h2>
-              <div className="space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-3 animate-pulse"
-                  >
-                    <div className="flex items-center gap-3 flex-1">
-                      <div
-                        className={`w-10 h-10 rounded-full flex-shrink-0 ${
-                          isDark ? 'bg-gray-800' : 'bg-gray-300'
-                        }`}
-                      />
-                      <div className="flex flex-col flex-1 gap-2">
-                        <div
-                          className={`h-3 rounded flex-1 ${
-                            isDark ? 'bg-gray-800' : 'bg-gray-300'
-                          }`}
-                        />
-                        <div
-                          className={`h-2 w-20 rounded ${
-                            isDark ? 'bg-gray-800' : 'bg-gray-300'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                    <div
-                      className={`h-8 w-16 rounded ${
-                        isDark ? 'bg-gray-800' : 'bg-gray-300'
-                      }`}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
+            {/* Suggested Users Component */}
+            <SuggestedUsers />
 
             {/* Trending Hashtags Card */}
             <div

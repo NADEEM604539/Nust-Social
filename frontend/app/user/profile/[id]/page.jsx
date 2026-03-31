@@ -88,9 +88,9 @@ export default function UserProfilePage() {
         });
         
         if (postsResponse?.data?.posts) {
-          // Filter: only this user's posts AND only non-anonymous
+          // Filter: only this user's posts AND only non-anonymous AND exclude SOCIETY_POST
           const userPosts = postsResponse.data.posts.filter(
-            post => post.user_id === parseInt(userId) && !post.is_anonymous
+            post => post.user_id === parseInt(userId) && !post.is_anonymous && post.type !== 'SOCIETY_POST'
           );
           setPosts(userPosts);
         }

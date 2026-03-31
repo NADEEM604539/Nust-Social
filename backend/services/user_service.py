@@ -539,3 +539,90 @@ class UserService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Failed to get ticket purchases: {str(e)}"
             )
+
+    @staticmethod
+    def get_suggested_users(db: Session, user_id: int, limit: int = 10, offset: int = 0) -> Tuple[bool, str, Optional[list]]:
+        """
+        Get suggested users based on:
+        1. Same batch/department (highest priority)
+        2. Not already followed
+        3. Not the current user
+        Returns: (success, message, list_of_suggestions)
+        """
+        try:
+            # Get current user's profile
+            user_profile = db.execute(
+                text("""
+                    SELECT batch_year, department
+                    FROM user_profiles
+                    WHERE user_id = :user_id
+                """),
+                {"user_id": user_id}
+            ).fetchone()
+            
+            user_batch = user_profile[0] if user_profile else None
+            user_dept = user_profile[1] if user_profile else None
+            
+            # Get users already followed by current user
+            followed_users = db.execute(
+                text("""
+                    SELECT following_id
+                    FROM follows
+                    WHERE follower_id = :user_id
+                """),
+                {"user_id": user_id}
+            ).fetchall()
+            
+            followed_ids = [f[0] for f in followed_users]
+            followed_ids.append(user_id)  # Exclude self
+            
+            placeholders = ','.join([str(id) for id in followed_ids])
+            
+            # Get suggested users with priority scoring
+            suggestions = db.execute(
+                text(f"""
+                    SELECT u.id, u.username, u.email,
+                           up.name, up.batch_year, up.department, up.bio,
+                           (CASE 
+                              WHEN up.batch_year = :user_batch AND up.department = :user_dept THEN 3
+                              WHEN up.batch_year = :user_batch THEN 2
+                              WHEN up.department = :user_dept THEN 1
+                              ELSE 0
+                            END) as priority_score,
+                           (SELECT COUNT(*) FROM posts WHERE user_id = u.id) as post_count,
+                           (SELECT COUNT(*) FROM follows WHERE following_id = u.id) as follower_count
+                    FROM users u
+                    LEFT JOIN user_profiles up ON u.id = up.user_id
+                    WHERE u.id NOT IN ({placeholders})
+                    ORDER BY priority_score DESC, post_count DESC, RAND()
+                    LIMIT :limit OFFSET :offset
+                """),
+                {
+                    "user_id": user_id,
+                    "user_batch": user_batch,
+                    "user_dept": user_dept,
+                    "limit": limit,
+                    "offset": offset
+                }
+            ).fetchall()
+            
+            suggested_users = [
+                {
+                    "id": s[0],
+                    "username": s[1],
+                    "email": s[2],
+                    "name": s[3],
+                    "batch_year": s[4],
+                    "department": s[5],
+                    "bio": s[6],
+                    "priority_score": s[7],
+                    "post_count": s[8],
+                    "follower_count": s[9]
+                }
+                for s in suggestions
+            ]
+            
+            return True, "Suggestions fetched successfully", suggested_users
+        
+        except Exception as e:
+            return False, f"Failed to get suggestions: {str(e)}", None
