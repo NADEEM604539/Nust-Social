@@ -9,6 +9,14 @@ export default function ProfilePostsSection({ userId, category, isDark, refreshT
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const handlePostUpdated = (updatedPost) => {
+    setPosts((prevPosts) =>
+      prevPosts.map((post) =>
+        post.id === updatedPost.id ? updatedPost : post
+      )
+    );
+  };
+
   useEffect(() => {
     const fetchPosts = async () => {
       try {
@@ -29,32 +37,35 @@ export default function ProfilePostsSection({ userId, category, isDark, refreshT
         console.log('All posts:', allPosts.length, allPosts); // Debug
 
         // Filter by user first
-        let userPosts = allPosts.filter(post => post.user_id === userId);
+        let userPosts = allPosts.filter(post => {
+          // Include posts where user_id matches OR anonymous posts where user is owner
+          return post.user_id === userId || (post.is_anonymous && post.is_owner);
+        });
         console.log(`Posts for user ${userId}:`, userPosts.length, userPosts); // Debug
 
         // Helper to check if anonymous (handle both boolean and integer)
         const isAnonymous = (post) => post.is_anonymous === true || post.is_anonymous === 1;
         const isNotAnonymous = (post) => post.is_anonymous === false || post.is_anonymous === 0;
 
-        // Then filter by category
+        // Then filter by category (and exclude SOCIETY_POST from all)
         let filteredPosts = [];
         
         if (category === 'posts') {
-          // Posts Tab: Non-anonymous SIMPLE_POST only
+          // Posts Tab: Non-anonymous SIMPLE_POST only (excludes SOCIETY_POST automatically)
           filteredPosts = userPosts.filter(
             post => isNotAnonymous(post) && post.type === 'SIMPLE_POST'
           );
           console.log('Posts (SIMPLE_POST, non-anonymous):', filteredPosts.length, filteredPosts);
         } else if (category === 'confessions') {
-          // Confessions Tab: Non-anonymous CONFESSION or RUMOR
+          // Confessions Tab: Non-anonymous CONFESSION or RUMOR (excludes SOCIETY_POST automatically)
           filteredPosts = userPosts.filter(
             post => isNotAnonymous(post) && (post.type === 'CONFESSION' || post.type === 'RUMOR')
           );
           console.log('Confessions (CONFESSION/RUMOR, non-anonymous):', filteredPosts.length, filteredPosts);
         } else if (category === 'anonymous') {
-          // Anonymous Tab: ALL anonymous posts (any type)
-          filteredPosts = userPosts.filter(post => isAnonymous(post));
-          console.log('Anonymous (is_anonymous=true):', filteredPosts.length, filteredPosts);
+          // Anonymous Tab: ALL anonymous posts except SOCIETY_POST
+          filteredPosts = userPosts.filter(post => isAnonymous(post) && post.type !== 'SOCIETY_POST');
+          console.log('Anonymous (is_anonymous=true, exclude SOCIETY_POST):', filteredPosts.length, filteredPosts);
         }
 
         console.log('Final filtered posts:', filteredPosts); // Debug
@@ -114,6 +125,7 @@ export default function ProfilePostsSection({ userId, category, isDark, refreshT
             post={post}
             isDark={isDark}
             onDeleted={onPostDeleted}
+            onPostUpdated={handlePostUpdated}
             showComments={false}
           />
         </div>

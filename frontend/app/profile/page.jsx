@@ -6,6 +6,8 @@ import Navigation from '@/components/Navigation';
 import EditUsernameModal from '@/components/EditUsernameModal';
 import EditProfileModal from '@/components/EditProfileModal';
 import ProfilePostsSection from '@/components/ProfilePostsSection';
+import FollowersModal from '@/components/FollowersModal';
+import FollowingModal from '@/components/FollowingModal';
 import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 import Link from 'next/link';
@@ -20,6 +22,8 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [showEditUsernameModal, setShowEditUsernameModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
+  const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [activeTab, setActiveTab] = useState('posts'); // posts, confessions, anonymous
   const [userId, setUserId] = useState(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -203,23 +207,29 @@ export default function ProfilePage() {
                         </p>
                       </div>
                       
-                      <div className="text-center cursor-pointer hover:opacity-75 transition-opacity">
+                      <button
+                        onClick={() => setShowFollowersModal(true)}
+                        className="text-center cursor-pointer hover:opacity-75 transition-opacity bg-transparent border-none p-0"
+                      >
                         <p className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>
                           {stats?.followers_count || 0}
                         </p>
                         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                           followers
                         </p>
-                      </div>
+                      </button>
                       
-                      <div className="text-center cursor-pointer hover:opacity-75 transition-opacity">
+                      <button
+                        onClick={() => setShowFollowingModal(true)}
+                        className="text-center cursor-pointer hover:opacity-75 transition-opacity bg-transparent border-none p-0"
+                      >
                         <p className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>
                           {stats?.following_count || 0}
                         </p>
                         <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
                           following
                         </p>
-                      </div>
+                      </button>
                     </div>
 
                     {/* Bio and Details */}
@@ -333,6 +343,26 @@ export default function ProfilePage() {
           isDark={isDark}
           onClose={() => setShowEditProfileModal(false)}
           onSave={handleEditProfile}
+        />
+      )}
+
+      {/* Followers Modal */}
+      {showFollowersModal && userId && (
+        <FollowersModal 
+          userId={userId} 
+          isOpen={showFollowersModal} 
+          onClose={() => setShowFollowersModal(false)}
+          username={user?.username}
+        />
+      )}
+
+      {/* Following Modal */}
+      {showFollowingModal && userId && (
+        <FollowingModal 
+          userId={userId} 
+          isOpen={showFollowingModal} 
+          onClose={() => setShowFollowingModal(false)}
+          username={user?.username}
         />
       )}
     </div>

@@ -376,4 +376,43 @@ async def get_my_ticket_purchases(
     return purchases
 
 
+# ===== GET SUGGESTED USERS =====
+@router.get("/suggestions/recommended", response_model=dict)
+async def get_suggested_users(
+    limit: int = Query(10, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get suggested users for the current user based on:
+    - Same batch/department (higher priority)
+    - Not already followed
+    - Not the current user
+    """
+    try:
+        success, message, data = UserService.get_suggested_users(
+            db=db,
+            user_id=current_user,
+            limit=limit,
+            offset=offset
+        )
+        
+        if not success:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+        
+        return {
+            "message": message,
+            "data": data,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "total": len(data)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch suggestions: {str(e)}"
+        )
 

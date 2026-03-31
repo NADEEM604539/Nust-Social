@@ -300,7 +300,7 @@ class PostService:
                 "comments": comments,
                 "stats": stats,
                 "user_reaction": user_reaction,
-                "user_rumor_vote": user_rumor_vote,
+                "user_vote": user_rumor_vote,
                 "created_at": created_at,
                 "edited_at": edited_at
             }
@@ -907,6 +907,18 @@ class PostService:
                 reactions_results = db.execute(text(reactions_query), {"user_id": user_id}).fetchall()
                 user_reactions = {row[0]: row[1] for row in reactions_results}
             
+            # 4b. Get user rumor votes if logged in
+            user_rumor_votes = {}
+            if user_id and post_ids:
+                placeholders = ','.join([str(pid) for pid in post_ids])
+                votes_query = f"""
+                    SELECT post_id, vote
+                    FROM rumor_votes
+                    WHERE post_id IN ({placeholders}) AND user_id = :user_id
+                """
+                votes_results = db.execute(text(votes_query), {"user_id": user_id}).fetchall()
+                user_rumor_votes = {row[0]: row[1] for row in votes_results}
+            
             # 5. Get follow status for all post authors (if logged in)
             follow_status = {}
             if user_id:
@@ -956,6 +968,7 @@ class PostService:
                         "rumor_false_votes": rumor_false_votes
                     },
                     "user_reaction": user_reactions.get(post_id),
+                    "user_vote": user_rumor_votes.get(post_id),
                     "created_at": created_at,
                     "edited_at": edited_at
                 })

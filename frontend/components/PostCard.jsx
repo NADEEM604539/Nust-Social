@@ -4,8 +4,9 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import MediaCarousel from './MediaCarousel';
 import { useTheme } from '@/context/ThemeContext';
+import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
 
-export default function PostCard({ post, onDelete, onReact, onComment, onFollow, onUnfollow }) {
+export default function PostCard({ post, currentUserId, onDelete, onReact, onComment, onFollow, onUnfollow }) {
   const { isDark } = useTheme();
   const [currentReaction, setCurrentReaction] = useState(post.user_reaction || null);
   const [likeCount, setLikeCount] = useState(post.stats?.likes_count || 0);
@@ -15,15 +16,24 @@ export default function PostCard({ post, onDelete, onReact, onComment, onFollow,
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
   const [isFollowing, setIsFollowing] = useState(post.is_following || false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
+  const [userVote, setUserVote] = useState(post.user_vote || null);
+  const [trueVotes, setTrueVotes] = useState(post.stats?.rumor_true_votes || 0);
+  const [falseVotes, setFalseVotes] = useState(post.stats?.rumor_false_votes || 0);
+  const [voteLoading, setVoteLoading] = useState(false);
+  const [voteLocked, setVoteLocked] = useState(false);
+  const [voteLockTimeRemaining, setVoteLockTimeRemaining] = useState(0);
 
   // Sync state when post data changes (from parent PostFeed updates)
   // This is the source of truth - always sync from parent
   useEffect(() => {
-    console.log(`PostCard[${post.id}]: Syncing from parent - reaction: ${post.user_reaction}, likes: ${post.stats?.likes_count}`);
+    console.log(`PostCard[${post.id}]: Syncing from parent - reaction: ${post.user_reaction}, likes: ${post.stats?.likes_count}, vote: ${post.user_vote}`);
     setCurrentReaction(post.user_reaction || null);
     setLikeCount(post.stats?.likes_count || 0);
     setIsFollowing(post.is_following || false);
-  }, [post.id, post.stats?.likes_count, post.user_reaction, post.is_following]);
+    setUserVote(post.user_vote || null);
+    setTrueVotes(post.stats?.rumor_true_votes || 0);
+    setFalseVotes(post.stats?.rumor_false_votes || 0);
+  }, [post.id, post.stats?.likes_count, post.user_reaction, post.is_following, post.user_vote, post.stats?.rumor_true_votes, post.stats?.rumor_false_votes]);
 
   // Countdown timer for reaction lock
   useEffect(() => {
@@ -41,6 +51,23 @@ export default function PostCard({ post, onDelete, onReact, onComment, onFollow,
 
     return () => clearInterval(timer);
   }, [reactionLocked, lockTimeRemaining]);
+
+  // Countdown timer for vote lock
+  useEffect(() => {
+    if (!voteLocked || voteLockTimeRemaining <= 0) return;
+
+    const timer = setInterval(() => {
+      setVoteLockTimeRemaining((prev) => {
+        if (prev <= 0.5) {
+          setVoteLocked(false);
+          return 0;
+        }
+        return prev - 0.5;
+      });
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [voteLocked, voteLockTimeRemaining]);
 
   const handleReaction = async (reactionType) => {
     // Prevent multiple simultaneous requests or while locked
@@ -90,6 +117,111 @@ export default function PostCard({ post, onDelete, onReact, onComment, onFollow,
   };
 
   const handleLike = () => handleReaction('LIKE');
+
+  const handleRumorVote = async (voteType) => {
+    // Prevent multiple simultaneous requests or while locked
+    if (voteLoading || voteLocked || post.type !== 'RUMOR') {
+      console.log(`Vote locked or already voting, ignoring click`);
+      return;
+    }
+
+    try {
+      setVoteLoading(true);
+      console.log(`PostCard[${post.id}]: Voting ${voteType}, current vote: ${userVote}`);
+
+      const token = getAccessToken();
+      if (!token) {
+        console.error('Not authenticated - cannot vote');
+        return;
+      }
+
+      // Store previous state for potential revert
+      const previousVote = userVote;
+      const previousTrueVotes = trueVotes;
+      const previousFalseVotes = falseVotes;
+
+      // Calculate new counts BEFORE API call
+      let newTrueVotes = trueVotes;
+      let newFalseVotes = falseVotes;
+      let newUserVote = userVote;
+
+      if (userVote === voteType) {
+        // Clicking same button - remove vote
+        console.log(`PostCard[${post.id}]: Removing vote for ${voteType}`);
+        newUserVote = null;
+        if (voteType === 'TRUE') {
+          newTrueVotes = Math.max(0, trueVotes - 1);
+        } else {
+          newFalseVotes = Math.max(0, falseVotes - 1);
+        }
+      } else {
+        // Adding new vote or switching
+        console.log(`PostCard[${post.id}]: Changing vote from ${userVote} to ${voteType}`);
+        if (userVote === 'TRUE') {
+          newTrueVotes = Math.max(0, trueVotes - 1);
+        } else if (userVote === 'FALSE') {
+          newFalseVotes = Math.max(0, falseVotes - 1);
+        }
+
+        newUserVote = voteType;
+        if (voteType === 'TRUE') {
+          newTrueVotes = newTrueVotes + 1;
+        } else {
+          newFalseVotes = newFalseVotes + 1;
+        }
+      }
+
+      // Update UI optimistically
+      setUserVote(newUserVote);
+      setTrueVotes(newTrueVotes);
+      setFalseVotes(newFalseVotes);
+
+      // Handle API calls - if removing vote, DELETE only; if switching, DELETE then POST
+      if (userVote === voteType) {
+        // Removing vote - just call DELETE
+        console.log(`PostCard[${post.id}]: Calling DELETE to unvote`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else if (userVote) {
+        // Switching vote - DELETE previous, then POST new
+        console.log(`PostCard[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'POST',
+          body: JSON.stringify({ vote: voteType }),
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else {
+        // Adding new vote - just POST
+        console.log(`PostCard[${post.id}]: Calling POST to vote ${voteType}`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'POST',
+          body: JSON.stringify({ vote: voteType }),
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      console.log(`PostCard[${post.id}]: Vote completed successfully`);
+
+      // Lock button for 2.5 seconds after successful vote
+      setVoteLocked(true);
+      setVoteLockTimeRemaining(2.5);
+    } catch (error) {
+      console.error(`PostCard[${post.id}]: Error voting:`, error);
+      // REVERT: On error, revert to previous state
+      console.log(`PostCard[${post.id}]: Reverting vote on error`);
+      setUserVote(post.user_vote || null);
+      setTrueVotes(post.stats?.rumor_true_votes || 0);
+      setFalseVotes(post.stats?.rumor_false_votes || 0);
+    } finally {
+      setVoteLoading(false);
+    }
+  };
 
   const handleFollow = async () => {
     if (isFollowLoading || post.is_owner || post.is_anonymous) return;
@@ -154,7 +286,7 @@ export default function PostCard({ post, onDelete, onReact, onComment, onFollow,
             ) : (
               <div className="flex items-center gap-2">
                 <Link
-                  href={`/user/profile/${post.user_id}`}
+                  href={post.user_id === currentUserId ? '/profile' : `/user/profile/${post.user_id}`}
                   className={`font-semibold hover:underline ${
                     isDark ? 'text-white' : 'text-black'
                   }`}
@@ -278,10 +410,64 @@ export default function PostCard({ post, onDelete, onReact, onComment, onFollow,
         </button>
       </div>
 
-      {/* Likes Count */}
-      <div className={`px-4 py-2 text-sm font-semibold ${isDark ? 'text-white' : 'text-black'}`}>
-        {likeCount} like{likeCount !== 1 ? 's' : ''}
-      </div>
+      {/* Likes Count or Rumor Voting */}
+      {post.type === 'RUMOR' ? (
+        <div className={`px-4 py-3 space-y-2 border-t ${isDark ? 'border-gray-800' : 'border-gray-100'}`}>
+          <p className={`text-xs font-semibold ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Is this true?</p>
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <button
+                onClick={() => handleRumorVote('TRUE')}
+                disabled={voteLoading || voteLocked}
+                className={`w-full px-2 py-1.5 rounded text-xs font-semibold transition-all ${
+                  voteLocked
+                    ? 'opacity-50 cursor-not-allowed'
+                    : userVote === 'TRUE'
+                    ? 'bg-green-500 text-white hover:bg-green-600'
+                    : isDark
+                    ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                } ${voteLoading ? 'opacity-50' : ''}`}
+                title={voteLocked ? `Wait ${voteLockTimeRemaining.toFixed(1)}s` : 'Vote True'}
+              >
+                ✅ True ({trueVotes})
+              </button>
+              {voteLocked && (
+                <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                  {voteLockTimeRemaining.toFixed(1)}s
+                </div>
+              )}
+            </div>
+            <div className="flex-1 relative">
+              <button
+                onClick={() => handleRumorVote('FALSE')}
+                disabled={voteLoading || voteLocked}
+                className={`w-full px-2 py-1.5 rounded text-xs font-semibold transition-all ${
+                  voteLocked
+                    ? 'opacity-50 cursor-not-allowed'
+                    : userVote === 'FALSE'
+                    ? 'bg-red-500 text-white hover:bg-red-600'
+                    : isDark
+                    ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                } ${voteLoading ? 'opacity-50' : ''}`}
+                title={voteLocked ? `Wait ${voteLockTimeRemaining.toFixed(1)}s` : 'Vote False'}
+              >
+                ❌ False ({falseVotes})
+              </button>
+              {voteLocked && (
+                <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                  {voteLockTimeRemaining.toFixed(1)}s
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className={`px-4 py-2 text-sm font-semibold ${isDark ? 'text-white' : 'text-black'}`}>
+          {likeCount} like{likeCount !== 1 ? 's' : ''}
+        </div>
+      )}
 
       {/* Post Caption */}
       {post.caption && (

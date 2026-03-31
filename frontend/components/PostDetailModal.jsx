@@ -24,6 +24,12 @@ export default function PostDetailModal({ postId }) {
   const [lockTimeRemaining, setLockTimeRemaining] = useState(0);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isFollowLoading, setIsFollowLoading] = useState(false);
+  const [userVote, setUserVote] = useState(null);
+  const [trueVotes, setTrueVotes] = useState(0);
+  const [falseVotes, setFalseVotes] = useState(0);
+  const [voteLoading, setVoteLoading] = useState(false);
+  const [voteLocked, setVoteLocked] = useState(false);
+  const [voteLockTimeRemaining, setVoteLockTimeRemaining] = useState(0);
 
   const getTimeAgo = (timestamp) => {
     if (!timestamp) return 'Unknown';
@@ -66,6 +72,13 @@ export default function PostDetailModal({ postId }) {
             setCurrentReaction(response.user_reaction || null);
             setLikeCount(response.stats?.likes_count || 0);
             setIsFollowing(response.is_following || false);
+            
+            // Initialize rumor voting state
+            if (response.type === 'RUMOR') {
+              setTrueVotes(response.stats?.rumor_true_votes || 0);
+              setFalseVotes(response.stats?.rumor_false_votes || 0);
+              setUserVote(response.user_vote || null);
+            }
             
             if (response.comments && Array.isArray(response.comments)) {
               setComments(response.comments);
@@ -120,6 +133,23 @@ export default function PostDetailModal({ postId }) {
     return () => clearInterval(timer);
   }, [reactionLocked, lockTimeRemaining]);
 
+  // Countdown timer for vote lock
+  useEffect(() => {
+    if (!voteLocked || voteLockTimeRemaining <= 0) return;
+
+    const timer = setInterval(() => {
+      setVoteLockTimeRemaining((prev) => {
+        if (prev <= 0.5) {
+          setVoteLocked(false);
+          return 0;
+        }
+        return prev - 0.5;
+      });
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [voteLocked, voteLockTimeRemaining]);
+
   const handleReaction = async (reactionType) => {
     if (isReacting || reactionLocked || !post) return;
 
@@ -160,6 +190,107 @@ export default function PostDetailModal({ postId }) {
       setLikeCount(post?.stats?.likes_count || 0);
     } finally {
       setIsReacting(false);
+    }
+  };
+
+  const handleRumorVote = async (voteType) => {
+    // Prevent multiple simultaneous requests or while locked
+    if (voteLoading || voteLocked || !post || post.type !== 'RUMOR') {
+      console.log(`Vote locked or already voting, ignoring click`);
+      return;
+    }
+
+    try {
+      setVoteLoading(true);
+      console.log(`PostDetail[${post.id}]: Voting ${voteType}, current vote: ${userVote}`);
+
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to vote');
+        return;
+      }
+
+      // Calculate new counts BEFORE API call
+      let newTrueVotes = trueVotes;
+      let newFalseVotes = falseVotes;
+      let newUserVote = userVote;
+
+      if (userVote === voteType) {
+        // Clicking same button - remove vote
+        console.log(`PostDetail[${post.id}]: Removing vote for ${voteType}`);
+        newUserVote = null;
+        if (voteType === 'TRUE') {
+          newTrueVotes = Math.max(0, trueVotes - 1);
+        } else {
+          newFalseVotes = Math.max(0, falseVotes - 1);
+        }
+      } else {
+        // Adding new vote or switching
+        console.log(`PostDetail[${post.id}]: Changing vote from ${userVote} to ${voteType}`);
+        if (userVote === 'TRUE') {
+          newTrueVotes = Math.max(0, trueVotes - 1);
+        } else if (userVote === 'FALSE') {
+          newFalseVotes = Math.max(0, falseVotes - 1);
+        }
+
+        newUserVote = voteType;
+        if (voteType === 'TRUE') {
+          newTrueVotes = newTrueVotes + 1;
+        } else {
+          newFalseVotes = newFalseVotes + 1;
+        }
+      }
+
+      // Update UI optimistically
+      setUserVote(newUserVote);
+      setTrueVotes(newTrueVotes);
+      setFalseVotes(newFalseVotes);
+
+      // Handle API calls - if removing vote, DELETE only; if switching, DELETE then POST
+      if (userVote === voteType) {
+        // Removing vote - just call DELETE
+        console.log(`PostDetail[${post.id}]: Calling DELETE to unvote`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else if (userVote) {
+        // Switching vote - DELETE previous, then POST new
+        console.log(`PostDetail[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'POST',
+          body: JSON.stringify({ vote: voteType }),
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } else {
+        // Adding new vote - just POST
+        console.log(`PostDetail[${post.id}]: Calling POST to vote ${voteType}`);
+        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+          method: 'POST',
+          body: JSON.stringify({ vote: voteType }),
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+
+      console.log(`PostDetail[${post.id}]: Vote completed successfully`);
+
+      // Lock button for 2.5 seconds after successful vote
+      setVoteLocked(true);
+      setVoteLockTimeRemaining(2.5);
+    } catch (error) {
+      console.error(`PostDetail[${post.id}]: Error voting:`, error);
+      setError('Failed to vote');
+      // REVERT: On error, revert to previous state
+      console.log(`PostDetail[${post.id}]: Reverting vote on error`);
+      setUserVote(post.user_vote || null);
+      setTrueVotes(post.stats?.rumor_true_votes || 0);
+      setFalseVotes(post.stats?.rumor_false_votes || 0);
+    } finally {
+      setVoteLoading(false);
     }
   };
 
@@ -429,9 +560,64 @@ export default function PostDetailModal({ postId }) {
                   <button className={`text-xl transition-all duration-200 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}>💬</button>
                   <button className={`text-xl transition-all duration-200 ml-auto ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}>📌</button>
                 </div>
-                <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-black'}`}>
-                  {likeCount} like{likeCount !== 1 ? 's' : ''}
-                </p>
+                
+                {post.type === 'RUMOR' ? (
+                  <div className={`space-y-2 ${isDark ? 'text-gray-100' : 'text-gray-900'}`}>
+                    <p className="text-sm font-semibold mb-2">Is this true?</p>
+                    <div className="flex gap-2">
+                      <div className="flex-1 relative">
+                        <button
+                          onClick={() => handleRumorVote('TRUE')}
+                          disabled={voteLoading || voteLocked}
+                          className={`w-full px-3 py-2 rounded text-sm font-semibold transition-all ${
+                            voteLocked
+                              ? 'opacity-50 cursor-not-allowed'
+                              : userVote === 'TRUE'
+                              ? 'bg-green-500 text-white hover:bg-green-600'
+                              : isDark
+                              ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                              : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                          } ${voteLoading ? 'opacity-50' : ''}`}
+                          title={voteLocked ? `Wait ${voteLockTimeRemaining.toFixed(1)}s` : 'Vote True'}
+                        >
+                          ✅ True ({trueVotes})
+                        </button>
+                        {voteLocked && (
+                          <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                            {voteLockTimeRemaining.toFixed(1)}s
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 relative">
+                        <button
+                          onClick={() => handleRumorVote('FALSE')}
+                          disabled={voteLoading || voteLocked}
+                          className={`w-full px-3 py-2 rounded text-sm font-semibold transition-all ${
+                            voteLocked
+                              ? 'opacity-50 cursor-not-allowed'
+                              : userVote === 'FALSE'
+                              ? 'bg-red-500 text-white hover:bg-red-600'
+                              : isDark
+                              ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                              : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                          } ${voteLoading ? 'opacity-50' : ''}`}
+                          title={voteLocked ? `Wait ${voteLockTimeRemaining.toFixed(1)}s` : 'Vote False'}
+                        >
+                          ❌ False ({falseVotes})
+                        </button>
+                        {voteLocked && (
+                          <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                            {voteLockTimeRemaining.toFixed(1)}s
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-black'}`}>
+                    {likeCount} like{likeCount !== 1 ? 's' : ''}
+                  </p>
+                )}
               </div>
 
               <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${isDark ? 'bg-gray-800/50' : 'bg-gray-50'}`}>

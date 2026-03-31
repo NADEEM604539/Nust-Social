@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PostCard from './PostCard';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS, getAccessToken, getUserId } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function PostFeed() {
@@ -13,9 +13,16 @@ export default function PostFeed() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const observerTarget = useRef(null);
 
   const LIMIT = 10;
+
+  // Get current user ID on mount
+  useEffect(() => {
+    const userId = getUserId();
+    setCurrentUserId(userId);
+  }, []);
 
   // Fetch posts
   const fetchPosts = useCallback(
@@ -347,6 +354,7 @@ export default function PostFeed() {
             <PostCard
               key={post.id}
               post={post}
+              currentUserId={currentUserId}
               onDelete={handleDelete}
               onReact={handleReact}
               onComment={handleComment}
