@@ -15,6 +15,7 @@ export default function PostFeed() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const observerTarget = useRef(null);
+  const offsetRef = useRef(0);
 
   const LIMIT = 10;
 
@@ -30,15 +31,17 @@ export default function PostFeed() {
       try {
         if (isInitial) {
           setLoading(true);
+          offsetRef.current = 0;
         } else {
           setLoadingMore(true);
         }
         setError('');
 
         const token = getAccessToken();
-        const url = `${API_ENDPOINTS.POSTS}?limit=${LIMIT}&offset=${isInitial ? 0 : offset}`;
+        const fetchOffset = isInitial ? 0 : offsetRef.current;
+        const url = `${API_ENDPOINTS.POSTS}?limit=${LIMIT}&offset=${fetchOffset}`;
         
-        console.log(`Fetching posts with offset=${isInitial ? 0 : offset}, limit=${LIMIT}`);
+        console.log(`Fetching posts with offset=${fetchOffset}, limit=${LIMIT}`);
         
         const response = await apiRequest(url, {
           method: 'GET',
@@ -50,10 +53,12 @@ export default function PostFeed() {
 
         // Parse response - the backend returns { message, data: { posts: [...], total, limit, offset, has_more } }
         let newPosts = [];
+        let responseHasMore = false;
         
         if (response?.data?.posts && Array.isArray(response.data.posts)) {
           console.log('Using response.data.posts');
           newPosts = response.data.posts;
+          responseHasMore = response.data.has_more || false;
         } else if (Array.isArray(response?.data)) {
           console.log('Using response.data (array)');
           newPosts = response.data;
@@ -64,7 +69,14 @@ export default function PostFeed() {
           console.warn('Unexpected response structure:', response);
         }
 
-        console.log('Fetched posts:', newPosts.length, 'posts');
+        console.log(`Fetched posts: ${newPosts.length} posts, has_more: ${responseHasMore}`);
+
+        // If no posts returned, we've reached the end
+        if (newPosts.length === 0) {
+          console.log('No more posts available - reached end of feed');
+          setHasMore(false);
+          return;
+        }
 
         // Validate posts have required fields
         const validPosts = newPosts.filter((post) => {
@@ -88,14 +100,27 @@ export default function PostFeed() {
 
         if (isInitial) {
           setPosts(validPosts);
+          offsetRef.current = LIMIT;
           setOffset(LIMIT);
+          // Use backend's has_more flag instead of calculating it
+          setHasMore(responseHasMore);
         } else {
-          setPosts((prev) => [...prev, ...validPosts]);
+          // Add safeguard to prevent duplicate posts
+          setPosts((prev) => {
+            const existingIds = new Set(prev.map(p => p.id));
+            const newPostsFiltered = validPosts.filter(p => !existingIds.has(p.id));
+            
+            if (newPostsFiltered.length !== validPosts.length) {
+              console.warn(`Prevented ${validPosts.length - newPostsFiltered.length} duplicate posts from being added`);
+            }
+            
+            return [...prev, ...newPostsFiltered];
+          });
+          offsetRef.current += LIMIT;
           setOffset((prev) => prev + LIMIT);
+          // Use backend's has_more flag instead of calculating it
+          setHasMore(responseHasMore);
         }
-
-        // Check if more posts available
-        setHasMore(validPosts.length === LIMIT);
       } catch (err) {
         console.error('Error fetching posts:', err);
         setError(err.message || 'Failed to load posts. Please try again.');
@@ -104,13 +129,13 @@ export default function PostFeed() {
         setLoadingMore(false);
       }
     },
-    [offset, LIMIT]
+    [LIMIT]
   );
 
   // Initial fetch
   useEffect(() => {
     fetchPosts(true);
-  }, [fetchPosts]);
+  }, []);
 
   // Infinite scroll observer
   useEffect(() => {
@@ -123,6 +148,7 @@ export default function PostFeed() {
           !loadingMore &&
           posts.length > 0
         ) {
+          console.log('Infinite scroll triggered: fetching more posts');
           fetchPosts(false);
         }
       },
@@ -138,7 +164,7 @@ export default function PostFeed() {
         observer.unobserve(observerTarget.current);
       }
     };
-  }, [hasMore, loading, loadingMore, posts.length, fetchPosts]);
+  }, [hasMore, loading, loadingMore, fetchPosts]);
 
   const handleDelete = async (postId) => {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
@@ -251,6 +277,55 @@ export default function PostFeed() {
     }
   };
 
+  const handleVote = async (postId) => {
+    try {
+      const token = getAccessToken();
+      if (!token) {
+        setError('Please log in to vote');
+        return;
+      }
+
+      console.log(`PostFeed: Voting on post ${postId}, refreshing post data`);
+
+      // Refresh the specific post to get accurate vote counts from backend
+      const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      console.log(`PostFeed: Got updated post data after vote:`, response);
+
+      if (response && response.id) {
+        const updatedPost = response;
+        
+        console.log(`PostFeed: Updated post ${postId} with votes - TRUE: ${updatedPost.stats?.rumor_true_votes}, FALSE: ${updatedPost.stats?.rumor_false_votes}`);
+        
+        // Merge updated vote counts and user's vote with existing post data
+        setPosts((prevPosts) =>
+          prevPosts.map((post) => {
+            if (post.id === postId) {
+              // Merge: keep existing data, update vote and stats
+              return {
+                ...post,
+                ...updatedPost,
+                stats: updatedPost.stats || post.stats,
+                user_vote: updatedPost.user_vote,
+              };
+            }
+            return post;
+          })
+        );
+      } else {
+        console.warn(`PostFeed: Unexpected response format after vote:`, response);
+      }
+    } catch (err) {
+      console.error('Error voting on post:', err);
+      setError(err.message || 'Failed to vote on post');
+      // On error, refetch to ensure we're in sync
+      fetchPosts(true);
+    }
+  };
+
   const handleFollow = async (userId) => {
     try {
       const token = getAccessToken();
@@ -357,6 +432,7 @@ export default function PostFeed() {
               currentUserId={currentUserId}
               onDelete={handleDelete}
               onReact={handleReact}
+              onVote={handleVote}
               onComment={handleComment}
               onFollow={handleFollow}
               onUnfollow={handleUnfollow}

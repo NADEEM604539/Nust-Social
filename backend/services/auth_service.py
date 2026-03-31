@@ -443,10 +443,10 @@ class AuthService:
         email: str,
         otp_code: str,
         new_password: str
-    ) -> Tuple[bool, str, None]:
+    ) -> Tuple[bool, str, Optional[Dict[str, str]]]:
         """
-        Reset password using OTP verification
-        Returns: (success, message, None)
+        Reset password using OTP verification and return authentication tokens
+        Returns: (success, message, {access_token, refresh_token})
         """
         try:
             # Find user
@@ -516,7 +516,18 @@ class AuthService:
             
             db.commit()
             
-            return True, "Password reset successful", None
+            # Generate tokens (auto-login)
+            # Note: create_access_token and create_refresh_token return tuples (token, expires_in)
+            access_token, _ = JWTManager.create_access_token(user_id)
+            refresh_token, _ = JWTManager.create_refresh_token(user_id)
+            
+            tokens = {
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "token_type": "bearer"
+            }
+            
+            return True, "Password reset successful", tokens
         except Exception as e:
             db.rollback()
             return False, f"Password reset failed: {str(e)}", None
@@ -806,7 +817,7 @@ class AuthService:
         """Get all active sessions for user"""
         sessions = db.execute(
             text("""
-                SELECT id, user_id, expires_at, is_active, created_at, ip_address, user_agent
+                SELECT id, token, user_id, expires_at, is_active, created_at, ip_address, user_agent
                 FROM user_sessions 
                 WHERE user_id = :user_id AND is_active = 1
             """),

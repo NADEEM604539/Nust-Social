@@ -214,11 +214,14 @@ CREATE TABLE reactions (
     target_type ENUM('POST','COMMENT') NOT NULL,
     target_id BIGINT NOT NULL,
     reaction_type ENUM("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY") NOT NULL,
+    reaction_weight FLOAT DEFAULT 1.0,
+    last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, target_type, target_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_target (user_id, target_type, target_id),
-    INDEX idx_target (target_type, target_id)
+    INDEX idx_target (target_type, target_id),
+    INDEX idx_last_changed (last_changed_at)
 );
 
 -- =========================
@@ -229,12 +232,32 @@ CREATE TABLE rumor_votes (
     post_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
     vote ENUM('TRUE','FALSE') NOT NULL,
+    vote_weight FLOAT DEFAULT 1.0,
+    last_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(post_id, user_id),
     FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_post_id (post_id),
-    INDEX idx_user_id (user_id)
+    INDEX idx_user_id (user_id),
+    INDEX idx_last_changed (last_changed_at)
+);
+
+-- RUMOR VOTE HISTORY (AUDIT TRAIL)
+CREATE TABLE rumor_vote_history (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    post_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    old_vote ENUM('TRUE','FALSE'),
+    new_vote ENUM('TRUE','FALSE'),
+    old_weight FLOAT,
+    new_weight FLOAT,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_post_id (post_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_changed_at (changed_at DESC)
 );
 
 -- =========================
@@ -243,12 +266,34 @@ CREATE TABLE rumor_votes (
 CREATE TABLE post_stats (
     post_id BIGINT PRIMARY KEY,
     likes_count INT DEFAULT 0,
+    likes_count_weighted FLOAT DEFAULT 0.0,
     comments_count INT DEFAULT 0,
     views_count INT DEFAULT 0,
     rumor_true_votes INT DEFAULT 0,
+    rumor_true_votes_weighted FLOAT DEFAULT 0.0,
     rumor_false_votes INT DEFAULT 0,
+    rumor_false_votes_weighted FLOAT DEFAULT 0.0,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
+    INDEX idx_last_updated (last_updated)
+);
+
+-- REACTION HISTORY (AUDIT TRAIL)
+CREATE TABLE reaction_history (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    target_type ENUM('POST','COMMENT') NOT NULL,
+    target_id BIGINT NOT NULL,
+    old_reaction_type ENUM("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"),
+    new_reaction_type ENUM("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY"),
+    old_weight FLOAT,
+    new_weight FLOAT,
+    action ENUM('ADDED','CHANGED','DELETED') NOT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_target (target_type, target_id),
+    INDEX idx_changed_at (changed_at DESC)
 );
 
 CREATE TABLE post_views (
@@ -559,15 +604,20 @@ CREATE TABLE audit_logs (
 -- =========================
 DELIMITER //
 
+-- NOTE: Triggers for reactions, comments, and votes are handled via application code
+-- to support weighted voting/reactions and rate limiting features
+-- The triggers below are kept for basic stats updates but weighted stats are calculated in services
+
 CREATE TRIGGER update_post_stats_on_reaction
 AFTER INSERT ON reactions
 FOR EACH ROW
 BEGIN
     IF NEW.target_type = 'POST' THEN
-        INSERT INTO post_stats (post_id, likes_count) 
-        VALUES (NEW.target_id, 1)
+        INSERT INTO post_stats (post_id, likes_count, likes_count_weighted) 
+        VALUES (NEW.target_id, 1, NEW.reaction_weight)
         ON DUPLICATE KEY UPDATE 
         likes_count = likes_count + 1,
+        likes_count_weighted = likes_count_weighted + NEW.reaction_weight,
         last_updated = CURRENT_TIMESTAMP;
     END IF;
 END //
@@ -588,16 +638,18 @@ AFTER INSERT ON rumor_votes
 FOR EACH ROW
 BEGIN
     IF NEW.vote = 'TRUE' THEN
-        INSERT INTO post_stats (post_id, rumor_true_votes)
-        VALUES (NEW.post_id, 1)
+        INSERT INTO post_stats (post_id, rumor_true_votes, rumor_true_votes_weighted)
+        VALUES (NEW.post_id, 1, NEW.vote_weight)
         ON DUPLICATE KEY UPDATE 
         rumor_true_votes = rumor_true_votes + 1,
+        rumor_true_votes_weighted = rumor_true_votes_weighted + NEW.vote_weight,
         last_updated = CURRENT_TIMESTAMP;
     ELSE
-        INSERT INTO post_stats (post_id, rumor_false_votes)
-        VALUES (NEW.post_id, 1)
+        INSERT INTO post_stats (post_id, rumor_false_votes, rumor_false_votes_weighted)
+        VALUES (NEW.post_id, 1, NEW.vote_weight)
         ON DUPLICATE KEY UPDATE 
         rumor_false_votes = rumor_false_votes + 1,
+        rumor_false_votes_weighted = rumor_false_votes_weighted + NEW.vote_weight,
         last_updated = CURRENT_TIMESTAMP;
     END IF;
 END //

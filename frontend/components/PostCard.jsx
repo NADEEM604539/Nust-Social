@@ -6,7 +6,7 @@ import MediaCarousel from './MediaCarousel';
 import { useTheme } from '@/context/ThemeContext';
 import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
 
-export default function PostCard({ post, currentUserId, onDelete, onReact, onComment, onFollow, onUnfollow }) {
+export default function PostCard({ post, currentUserId, onDelete, onReact, onVote, onComment, onFollow, onUnfollow }) {
   const { isDark } = useTheme();
   const [currentReaction, setCurrentReaction] = useState(post.user_reaction || null);
   const [likeCount, setLikeCount] = useState(post.stats?.likes_count || 0);
@@ -100,6 +100,25 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onCom
         }
         await onReact(post.id, reactionType);
       }
+            // REFETCH: Get fresh data from backend like PostDetailModal does
+      console.log(`PostCard[${post.id}]: Refetching post data after reaction`);
+      try {
+        const token = getAccessToken();
+        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (response && response.id) {
+          // Update local state directly from fresh backend data
+          console.log(`PostCard[${post.id}]: Synced reaction state - current: ${response.user_reaction}, likes: ${response.stats?.likes_count}`);
+          setCurrentReaction(response.user_reaction || null);
+          setLikeCount(response.stats?.likes_count || 0);
+        }
+      } catch (err) {
+        console.error(`PostCard[${post.id}]: Error refetching after react:`, err);
+        // Continue anyway - UI already updated optimistically
+      }
       
       // Lock button for 2.5 seconds after reaction
       setReactionLocked(true);
@@ -177,6 +196,7 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onCom
       setFalseVotes(newFalseVotes);
 
       // Handle API calls - if removing vote, DELETE only; if switching, DELETE then POST
+      let voteResponse = null;
       if (userVote === voteType) {
         // Removing vote - just call DELETE
         console.log(`PostCard[${post.id}]: Calling DELETE to unvote`);
@@ -191,7 +211,7 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onCom
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
@@ -199,25 +219,64 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onCom
       } else {
         // Adding new vote - just POST
         console.log(`PostCard[${post.id}]: Calling POST to vote ${voteType}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
         });
       }
 
-      console.log(`PostCard[${post.id}]: Vote completed successfully`);
+      console.log(`PostCard[${post.id}]: Vote completed successfully, response:`, voteResponse);
 
-      // Lock button for 2.5 seconds after successful vote
-      setVoteLocked(true);
-      setVoteLockTimeRemaining(2.5);
+      // REFETCH: Get fresh vote counts from backend like PostDetailModal does
+      console.log(`PostCard[${post.id}]: Refetching post data after vote`);
+      const fetchResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+        method: 'GET',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (fetchResponse && fetchResponse.id) {
+        // Update local state directly from fresh backend data
+        console.log(`PostCard[${post.id}]: Synced vote state - user_vote: ${fetchResponse.user_vote}, TRUE: ${fetchResponse.stats?.rumor_true_votes}, FALSE: ${fetchResponse.stats?.rumor_false_votes}`);
+        setUserVote(fetchResponse.user_vote || null);
+        setTrueVotes(fetchResponse.stats?.rumor_true_votes || 0);
+        setFalseVotes(fetchResponse.stats?.rumor_false_votes || 0);
+
+        // Also call parent callback to sync parent state
+        if (onVote) {
+          console.log(`PostCard[${post.id}]: Calling parent onVote callback`);
+          await onVote(post.id);
+        }
+      } else {
+        console.warn(`PostCard[${post.id}]: Unexpected refetch response after vote`);
+      }
+
     } catch (error) {
       console.error(`PostCard[${post.id}]: Error voting:`, error);
+      
+      // Check if error is rate limit error (only lock on rate limit, not other errors)
+      const errorMsg = error.message || '';
+      if (errorMsg.includes('wait') || errorMsg.includes('Please wait') || errorMsg.includes('seconds')) {
+        // Extract wait time from error message if possible
+        const match = errorMsg.match(/(\d+)\s*seconds?/);
+        if (match) {
+          const waitSeconds = parseInt(match[1]) + 0.5;
+          console.log(`PostCard[${post.id}]: Rate limited, locking for ${waitSeconds} seconds`);
+          setVoteLocked(true);
+          setVoteLockTimeRemaining(waitSeconds);
+        } else {
+          // Generic rate limit - lock for 5 minutes
+          console.log(`PostCard[${post.id}]: Rate limited, locking for 5 minutes`);
+          setVoteLocked(true);
+          setVoteLockTimeRemaining(300.5);
+        }
+      }
+
       // REVERT: On error, revert to previous state
       console.log(`PostCard[${post.id}]: Reverting vote on error`);
-      setUserVote(post.user_vote || null);
-      setTrueVotes(post.stats?.rumor_true_votes || 0);
-      setFalseVotes(post.stats?.rumor_false_votes || 0);
+      setUserVote(previousVote);
+      setTrueVotes(previousTrueVotes);
+      setFalseVotes(previousFalseVotes);
     } finally {
       setVoteLoading(false);
     }

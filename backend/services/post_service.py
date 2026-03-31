@@ -114,8 +114,8 @@ class PostService:
             db.execute(
                 text("""
                     INSERT INTO post_stats (post_id, likes_count, comments_count, views_count, 
-                                           rumor_true_votes, rumor_false_votes)
-                    VALUES (:post_id, 0, 0, 0, 0, 0)
+                                           rumor_true_votes, rumor_false_votes, rumor_true_votes_weighted, rumor_false_votes_weighted)
+                    VALUES (:post_id, 0, 0, 0, 0, 0, 0.0, 0.0)
                 """),
                 {"post_id": post_id}
             )
@@ -429,18 +429,13 @@ class PostService:
         reaction_type: str
     ) -> Tuple[bool, str, Optional[dict]]:
         """
-        React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY)
-        Returns: (success, message, reaction_data)
-        """
-    @staticmethod
-    def react_to_post(
-        db: Session,
-        post_id: int,
-        user_id: int,
-        reaction_type: str
-    ) -> Tuple[bool, str, Optional[dict]]:
-        """
-        React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY)
+        React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY) with real-world reaction system
+        Features:
+        - Reaction weight based on user reputation
+        - Reaction change history tracking
+        - Rate limiting (2 minute cooldown between changes)
+        - Weighted reaction aggregation
+        
         Returns: (success, message, reaction_data)
         """
         try:
@@ -457,41 +452,152 @@ class PostService:
             if not post_result:
                 return False, "Post not found", None
 
+            # Calculate user reaction power (1.0 = normal, > 1.0 = more powerful)
+            user_power = PostService._calculate_voting_power(db, user_id)
+
             # Check if user already reacted
-            existing = db.execute(
-                text("SELECT id, reaction_type FROM reactions WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
+            existing_reaction = db.execute(
+                text("""
+                    SELECT id, reaction_type, reaction_weight, last_changed_at 
+                    FROM reactions 
+                    WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id
+                """),
                 {"post_id": post_id, "user_id": user_id}
             ).fetchone()
 
-            if existing:
-                # Update existing reaction (no increment)
+            if existing_reaction:
+                reaction_id, old_type, old_weight, last_changed = existing_reaction
+                
+                # Check if trying to react the same way
+                if old_type == reaction_type:
+                    return False, "You have already reacted with this emoji", None
+                
+                # Rate limiting: min 2 minutes between reaction changes
+                from datetime import datetime, timedelta
+                time_since_change = datetime.utcnow() - last_changed
+                min_cooldown = timedelta(minutes=2)
+                
+                if time_since_change < min_cooldown:
+                    remaining_seconds = int((min_cooldown - time_since_change).total_seconds())
+                    return False, f"Please wait {remaining_seconds} seconds before changing your reaction", None
+                
+                # Update existing reaction
                 db.execute(
-                    text("UPDATE reactions SET reaction_type = :reaction_type WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
-                    {"post_id": post_id, "user_id": user_id, "reaction_type": reaction_type}
+                    text("""
+                        UPDATE reactions 
+                        SET reaction_type = :reaction_type, reaction_weight = :weight, last_changed_at = NOW()
+                        WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id
+                    """),
+                    {"post_id": post_id, "user_id": user_id, "reaction_type": reaction_type, "weight": user_power}
                 )
+                
+                # Record reaction change in history
+                db.execute(
+                    text("""
+                        INSERT INTO reaction_history 
+                        (reaction_id, post_id, user_id, old_reaction, new_reaction, old_weight, new_weight, reason, changed_at)
+                        VALUES (:reaction_id, :post_id, :user_id, :old_reaction, :new_reaction, :old_weight, :new_weight, 'user_changed', NOW())
+                    """),
+                    {
+                        "reaction_id": reaction_id,
+                        "post_id": post_id,
+                        "user_id": user_id,
+                        "old_reaction": old_type,
+                        "new_reaction": reaction_type,
+                        "old_weight": old_weight,
+                        "new_weight": user_power
+                    }
+                )
+                
+                # Update stats: only LIKE reactions count toward likes_count
+                if old_type == 'LIKE':
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET likes_count = GREATEST(0, likes_count - 1),
+                                likes_count_weighted = GREATEST(0.0, likes_count_weighted - :old_weight)
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "old_weight": old_weight}
+                    )
+                
+                if reaction_type == 'LIKE':
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET likes_count = likes_count + 1,
+                                likes_count_weighted = likes_count_weighted + :new_weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "new_weight": user_power}
+                    )
+
+                db.commit()
+
+                return True, f"Reaction changed to {reaction_type}", {
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "reaction_type": reaction_type,
+                    "reaction_weight": user_power,
+                    "changed": True
+                }
             else:
                 # Create new reaction (increment count)
                 db.execute(
                     text("""
-                        INSERT INTO reactions (user_id, target_type, target_id, reaction_type, created_at)
-                        VALUES (:user_id, 'POST', :post_id, :reaction_type, NOW())
+                        INSERT INTO reactions (user_id, target_id, target_type, reaction_type, reaction_weight, last_changed_at, created_at)
+                        VALUES (:user_id, :post_id, 'POST', :reaction_type, :weight, NOW(), NOW())
                     """),
-                    {"post_id": post_id, "user_id": user_id, "reaction_type": reaction_type}
+                    {"post_id": post_id, "user_id": user_id, "reaction_type": reaction_type, "weight": user_power}
                 )
                 
-                # Only increment count for NEW reactions
+                db.flush()
+                
+                # Get reaction ID for history tracking
+                new_reaction = db.execute(
+                    text("SELECT id FROM reactions WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+                
+                reaction_id = new_reaction[0]
+                
+                # Record first reaction in history
                 db.execute(
-                    text("UPDATE post_stats SET likes_count = likes_count + 1 WHERE post_id = :post_id"),
-                    {"post_id": post_id}
+                    text("""
+                        INSERT INTO reaction_history 
+                        (reaction_id, post_id, user_id, old_reaction, new_reaction, old_weight, new_weight, reason, changed_at)
+                        VALUES (:reaction_id, :post_id, :user_id, NULL, :new_reaction, NULL, :new_weight, 'first_reaction', NOW())
+                    """),
+                    {
+                        "reaction_id": reaction_id,
+                        "post_id": post_id,
+                        "user_id": user_id,
+                        "new_reaction": reaction_type,
+                        "new_weight": user_power
+                    }
                 )
+                
+                # Only LIKE reactions count toward likes_count
+                if reaction_type == 'LIKE':
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET likes_count = likes_count + 1,
+                                likes_count_weighted = likes_count_weighted + :weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "weight": user_power}
+                    )
 
-            db.commit()
+                db.commit()
 
-            return True, f"Reacted with {reaction_type}", {
-                "post_id": post_id,
-                "user_id": user_id,
-                "reaction_type": reaction_type
-            }
+                return True, f"Reacted with {reaction_type}", {
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "reaction_type": reaction_type,
+                    "reaction_weight": user_power,
+                    "changed": False
+                }
         except Exception as e:
             db.rollback()
             return False, f"Reaction failed: {str(e)}", None
@@ -503,18 +609,36 @@ class PostService:
         user_id: int
     ) -> Tuple[bool, str]:
         """
-        Remove reaction from post
+        Remove reaction from post with history tracking
         Returns: (success, message)
         """
         try:
             # Check if user has reacted
-            existing = db.execute(
-                text("SELECT id FROM reactions WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
+            existing_reaction = db.execute(
+                text("SELECT id, reaction_type, reaction_weight FROM reactions WHERE target_id = :post_id AND target_type = 'POST' AND user_id = :user_id"),
                 {"post_id": post_id, "user_id": user_id}
             ).fetchone()
 
-            if not existing:
+            if not existing_reaction:
                 return False, "No reaction found for this post"
+
+            reaction_id, reaction_type, reaction_weight = existing_reaction
+
+            # Record deletion in history
+            db.execute(
+                text("""
+                    INSERT INTO reaction_history 
+                    (reaction_id, post_id, user_id, old_reaction, new_reaction, old_weight, new_weight, reason, changed_at)
+                    VALUES (:reaction_id, :post_id, :user_id, :old_reaction, NULL, :old_weight, NULL, 'user_deleted', NOW())
+                """),
+                {
+                    "reaction_id": reaction_id,
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "old_reaction": reaction_type,
+                    "old_weight": reaction_weight
+                }
+            )
 
             # Delete reaction
             db.execute(
@@ -522,11 +646,17 @@ class PostService:
                 {"post_id": post_id, "user_id": user_id}
             )
 
-            # Decrement likes count
-            db.execute(
-                text("UPDATE post_stats SET likes_count = GREATEST(0, likes_count - 1) WHERE post_id = :post_id"),
-                {"post_id": post_id}
-            )
+            # Decrement likes count only if it was a LIKE reaction
+            if reaction_type == 'LIKE':
+                db.execute(
+                    text("""
+                        UPDATE post_stats 
+                        SET likes_count = GREATEST(0, likes_count - 1),
+                            likes_count_weighted = GREATEST(0.0, likes_count_weighted - :weight)
+                        WHERE post_id = :post_id
+                    """),
+                    {"post_id": post_id, "weight": reaction_weight}
+                )
 
             db.commit()
 
@@ -543,111 +673,272 @@ class PostService:
         vote: str
     ) -> Tuple[bool, str, Optional[dict]]:
         """
-        Vote on rumor (TRUE/FALSE)
+        Vote on rumor (TRUE/FALSE) with real-world voting system
+        Features:
+        - Vote weight based on user reputation
+        - Vote change history tracking
+        - Rate limiting (5 minute cooldown between changes)
+        - Weighted vote aggregation
         Returns: (success, message, vote_data)
         """
         try:
             if vote not in ['TRUE', 'FALSE']:
                 return False, "Vote must be TRUE or FALSE", None
 
-            # Check post exists and is RUMOR type
+            # Check post exists and is RUMOR type and not deleted
             post_result = db.execute(
-                text("SELECT type FROM posts WHERE id = :post_id AND deleted_at IS NULL"),
+                text("SELECT created_at FROM posts WHERE id = :post_id AND deleted_at IS NULL AND type = 'RUMOR'"),
                 {"post_id": post_id}
             ).fetchone()
 
-            if not post_result or post_result[0] != 'RUMOR':
-                return False, "Post not found or is not a rumor", None
+            if not post_result:
+                return False, "Post not found or is not a rumor post", None
 
+            # Calculate user voting power (1.0 = normal, > 1.0 = more powerful)
+            # Based on: follower count, post age, account age
+            user_power = PostService._calculate_voting_power(db, user_id)
+            
             # Check if user already voted
             existing_vote = db.execute(
-                text("SELECT vote FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+                text("""
+                    SELECT id, vote, vote_weight, last_changed_at 
+                    FROM rumor_votes 
+                    WHERE post_id = :post_id AND user_id = :user_id
+                """),
                 {"post_id": post_id, "user_id": user_id}
             ).fetchone()
 
             if existing_vote:
-                old_vote = existing_vote[0]
+                vote_id, old_vote, old_weight, last_changed = existing_vote
                 
-                # Only update if vote is different from existing one
-                if old_vote != vote:
-                    # Decrement old vote count
-                    if old_vote == 'TRUE':
-                        db.execute(
-                            text("UPDATE post_stats SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1) WHERE post_id = :post_id"),
-                            {"post_id": post_id}
-                        )
-                    else:
-                        db.execute(
-                            text("UPDATE post_stats SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1) WHERE post_id = :post_id"),
-                            {"post_id": post_id}
-                        )
-                    
-                    # Update the vote
+                # Check if trying to vote the same way
+                if old_vote == vote:
+                    return False, "You have already voted this way", None
+                
+                # Rate limiting: min 5 minutes between vote changes
+                from datetime import datetime, timedelta
+                time_since_change = datetime.utcnow() - last_changed
+                min_cooldown = timedelta(minutes=5)
+                
+                if time_since_change < min_cooldown:
+                    remaining_seconds = int((min_cooldown - time_since_change).total_seconds())
+                    return False, f"Please wait {remaining_seconds} seconds before changing your vote", None
+                
+                # Update existing vote
+                old_vote_enum = old_vote
+                new_vote_enum = vote
+                
+                # Begin transaction for vote change
+                db.execute(
+                    text("""
+                        UPDATE rumor_votes 
+                        SET vote = :vote, vote_weight = :weight, last_changed_at = NOW()
+                        WHERE post_id = :post_id AND user_id = :user_id
+                    """),
+                    {"post_id": post_id, "user_id": user_id, "vote": vote, "weight": user_power}
+                )
+                
+                # Record vote change in history
+                db.execute(
+                    text("""
+                        INSERT INTO rumor_vote_history 
+                        (rumor_vote_id, post_id, user_id, old_vote, new_vote, old_weight, new_weight, reason, changed_at)
+                        VALUES (:vote_id, :post_id, :user_id, :old_vote, :new_vote, :old_weight, :new_weight, 'user_changed', NOW())
+                    """),
+                    {
+                        "vote_id": vote_id,
+                        "post_id": post_id,
+                        "user_id": user_id,
+                        "old_vote": old_vote_enum,
+                        "new_vote": new_vote_enum,
+                        "old_weight": old_weight,
+                        "new_weight": user_power
+                    }
+                )
+                
+                # Update stats: decrement old vote, increment new vote
+                if old_vote_enum == 'TRUE':
                     db.execute(
-                        text("UPDATE rumor_votes SET vote = :vote WHERE post_id = :post_id AND user_id = :user_id"),
-                        {"post_id": post_id, "user_id": user_id, "vote": vote}
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1),
+                                rumor_true_votes_weighted = GREATEST(0.0, rumor_true_votes_weighted - :old_weight)
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "old_weight": old_weight}
                     )
-                    
-                    # Increment new vote count
-                    if vote == 'TRUE':
-                        db.execute(
-                            text("UPDATE post_stats SET rumor_true_votes = rumor_true_votes + 1 WHERE post_id = :post_id"),
-                            {"post_id": post_id}
-                        )
-                    else:
-                        db.execute(
-                            text("UPDATE post_stats SET rumor_false_votes = rumor_false_votes + 1 WHERE post_id = :post_id"),
-                            {"post_id": post_id}
-                        )
+                else:
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1),
+                                rumor_false_votes_weighted = GREATEST(0.0, rumor_false_votes_weighted - :old_weight)
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "old_weight": old_weight}
+                    )
+                
+                # Increment new vote
+                if new_vote_enum == 'TRUE':
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_true_votes = rumor_true_votes + 1,
+                                rumor_true_votes_weighted = rumor_true_votes_weighted + :weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "weight": user_power}
+                    )
+                else:
+                    db.execute(
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_false_votes = rumor_false_votes + 1,
+                                rumor_false_votes_weighted = rumor_false_votes_weighted + :weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "weight": user_power}
+                    )
+                
+                message = f"Vote changed from {old_vote} to {vote}"
             else:
                 # Create new vote
                 db.execute(
                     text("""
-                        INSERT INTO rumor_votes (post_id, user_id, vote, created_at)
-                        VALUES (:post_id, :user_id, :vote, NOW())
+                        INSERT INTO rumor_votes (post_id, user_id, vote, vote_weight, last_changed_at, created_at)
+                        VALUES (:post_id, :user_id, :vote, :weight, NOW(), NOW())
                     """),
-                    {"post_id": post_id, "user_id": user_id, "vote": vote}
+                    {"post_id": post_id, "user_id": user_id, "vote": vote, "weight": user_power}
+                )
+                db.flush()
+                
+                # Get the new vote ID for history
+                new_vote_result = db.execute(
+                    text("SELECT id FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+                    {"post_id": post_id, "user_id": user_id}
+                ).fetchone()
+                vote_id = new_vote_result[0]
+                
+                # Record first vote in history
+                db.execute(
+                    text("""
+                        INSERT INTO rumor_vote_history 
+                        (rumor_vote_id, post_id, user_id, old_vote, new_vote, old_weight, new_weight, reason, changed_at)
+                        VALUES (:vote_id, :post_id, :user_id, NULL, :vote, NULL, :weight, 'user_changed', NOW())
+                    """),
+                    {"vote_id": vote_id, "post_id": post_id, "user_id": user_id, "vote": vote, "weight": user_power}
                 )
                 
-                # Increment vote count for new vote
+                # Increment vote count
                 if vote == 'TRUE':
                     db.execute(
-                        text("UPDATE post_stats SET rumor_true_votes = rumor_true_votes + 1 WHERE post_id = :post_id"),
-                        {"post_id": post_id}
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_true_votes = rumor_true_votes + 1,
+                                rumor_true_votes_weighted = rumor_true_votes_weighted + :weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "weight": user_power}
                     )
                 else:
                     db.execute(
-                        text("UPDATE post_stats SET rumor_false_votes = rumor_false_votes + 1 WHERE post_id = :post_id"),
-                        {"post_id": post_id}
+                        text("""
+                            UPDATE post_stats 
+                            SET rumor_false_votes = rumor_false_votes + 1,
+                                rumor_false_votes_weighted = rumor_false_votes_weighted + :weight
+                            WHERE post_id = :post_id
+                        """),
+                        {"post_id": post_id, "weight": user_power}
                     )
+                
+                message = f"Voted {vote} on rumor"
 
             # Get updated stats
             stats_result = db.execute(
                 text("""
-                    SELECT rumor_true_votes, rumor_false_votes
+                    SELECT rumor_true_votes, rumor_false_votes, rumor_true_votes_weighted, rumor_false_votes_weighted
                     FROM post_stats
                     WHERE post_id = :post_id
                 """),
                 {"post_id": post_id}
             ).fetchone()
 
-            true_votes, false_votes = stats_result
+            true_votes, false_votes, true_weighted, false_weighted = stats_result
             total_votes = true_votes + false_votes
+            total_weighted = true_weighted + false_weighted
+            
             percentage_true = (true_votes / total_votes * 100) if total_votes > 0 else 0
+            percentage_true_weighted = (true_weighted / total_weighted * 100) if total_weighted > 0 else 0
 
             db.commit()
 
-            return True, f"Voted {vote} on rumor", {
+            return True, message, {
                 "post_id": post_id,
                 "user_id": user_id,
                 "vote": vote,
+                "vote_weight": round(user_power, 2),
                 "total_votes_true": true_votes,
                 "total_votes_false": false_votes,
-                "percentage_true": round(percentage_true, 2)
+                "percentage_true": round(percentage_true, 2),
+                "total_votes_true_weighted": round(true_weighted, 2),
+                "total_votes_false_weighted": round(false_weighted, 2),
+                "percentage_true_weighted": round(percentage_true_weighted, 2)
             }
         except Exception as e:
             db.rollback()
             return False, f"Vote failed: {str(e)}", None
+    
+    @staticmethod
+    def _calculate_voting_power(db: Session, user_id: int) -> float:
+        """
+        Calculate user's voting power based on reputation metrics
+        Default weight = 1.0
+        Max weight = 3.0
+        
+        Factors:
+        - Account age: +0.1 per month (max +1.0)
+        - Followers: +0.01 per 50 followers (max +0.5)
+        - Posts created: +0.02 per 10 posts (max +0.5)
+        """
+        try:
+            user_result = db.execute(
+                text("""
+                    SELECT created_at, followers_count 
+                    FROM users 
+                    WHERE id = :user_id
+                """),
+                {"user_id": user_id}
+            ).fetchone()
+            
+            if not user_result:
+                return 1.0
+            
+            created_at, followers_count = user_result
+            from datetime import datetime
+            account_age_months = (datetime.utcnow() - created_at).days / 30
+            
+            power = 1.0
+            
+            # Account age bonus (max +1.0)
+            age_bonus = min(account_age_months * 0.1, 1.0)
+            power += age_bonus
+            
+            # Followers bonus (max +0.5)
+            followers_bonus = min((followers_count or 0) / 50 * 0.01, 0.5)
+            power += followers_bonus
+            
+            # Posts bonus (max +0.5)
+            post_count = db.execute(
+                text("SELECT COUNT(*) FROM posts WHERE user_id = :user_id AND deleted_at IS NULL"),
+                {"user_id": user_id}
+            ).fetchone()[0]
+            posts_bonus = min(post_count / 10 * 0.02, 0.5)
+            power += posts_bonus
+            
+            # Cap at 3.0
+            return min(power, 3.0)
+        except:
+            return 1.0
 
     @staticmethod
     def delete_vote(
@@ -656,20 +947,36 @@ class PostService:
         user_id: int
     ) -> Tuple[bool, str, Optional[dict]]:
         """
-        Delete/remove vote on rumor
+        Delete/remove vote on rumor with history tracking
         Returns: (success, message, vote_data)
         """
         try:
             # Check if user has voted on this post
             vote_result = db.execute(
-                text("SELECT vote FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
+                text("SELECT id, vote, vote_weight FROM rumor_votes WHERE post_id = :post_id AND user_id = :user_id"),
                 {"post_id": post_id, "user_id": user_id}
             ).fetchone()
 
             if not vote_result:
                 return False, "No vote found for this post", None
 
-            old_vote = vote_result[0]
+            vote_id, old_vote, old_weight = vote_result
+
+            # Record deletion in history
+            db.execute(
+                text("""
+                    INSERT INTO rumor_vote_history 
+                    (rumor_vote_id, post_id, user_id, old_vote, new_vote, old_weight, new_weight, reason, changed_at)
+                    VALUES (:vote_id, :post_id, :user_id, :old_vote, NULL, :old_weight, 0, 'deleted', NOW())
+                """),
+                {
+                    "vote_id": vote_id,
+                    "post_id": post_id,
+                    "user_id": user_id,
+                    "old_vote": old_vote,
+                    "old_weight": old_weight
+                }
+            )
 
             # Delete the vote
             db.execute(
@@ -677,31 +984,44 @@ class PostService:
                 {"post_id": post_id, "user_id": user_id}
             )
 
-            # Decrement the vote count
+            # Decrement the vote count and weighted count
             if old_vote == 'TRUE':
                 db.execute(
-                    text("UPDATE post_stats SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1) WHERE post_id = :post_id"),
-                    {"post_id": post_id}
+                    text("""
+                        UPDATE post_stats 
+                        SET rumor_true_votes = GREATEST(0, rumor_true_votes - 1),
+                            rumor_true_votes_weighted = GREATEST(0.0, rumor_true_votes_weighted - :weight)
+                        WHERE post_id = :post_id
+                    """),
+                    {"post_id": post_id, "weight": old_weight}
                 )
             else:
                 db.execute(
-                    text("UPDATE post_stats SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1) WHERE post_id = :post_id"),
-                    {"post_id": post_id}
+                    text("""
+                        UPDATE post_stats 
+                        SET rumor_false_votes = GREATEST(0, rumor_false_votes - 1),
+                            rumor_false_votes_weighted = GREATEST(0.0, rumor_false_votes_weighted - :weight)
+                        WHERE post_id = :post_id
+                    """),
+                    {"post_id": post_id, "weight": old_weight}
                 )
 
             # Get updated stats
             stats_result = db.execute(
                 text("""
-                    SELECT rumor_true_votes, rumor_false_votes
+                    SELECT rumor_true_votes, rumor_false_votes, rumor_true_votes_weighted, rumor_false_votes_weighted
                     FROM post_stats
                     WHERE post_id = :post_id
                 """),
                 {"post_id": post_id}
             ).fetchone()
 
-            true_votes, false_votes = stats_result
+            true_votes, false_votes, true_weighted, false_weighted = stats_result
             total_votes = true_votes + false_votes
+            total_weighted = true_weighted + false_weighted
+            
             percentage_true = (true_votes / total_votes * 100) if total_votes > 0 else 0
+            percentage_true_weighted = (true_weighted / total_weighted * 100) if total_weighted > 0 else 0
 
             db.commit()
 
@@ -711,7 +1031,10 @@ class PostService:
                 "removed_vote": old_vote,
                 "total_votes_true": true_votes,
                 "total_votes_false": false_votes,
-                "percentage_true": round(percentage_true, 2)
+                "percentage_true": round(percentage_true, 2),
+                "total_votes_true_weighted": round(true_weighted, 2),
+                "total_votes_false_weighted": round(false_weighted, 2),
+                "percentage_true_weighted": round(percentage_true_weighted, 2)
             }
         except Exception as e:
             db.rollback()

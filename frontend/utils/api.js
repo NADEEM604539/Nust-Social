@@ -1,3 +1,17 @@
+// Import token manager first (must be before apiRequest)
+import {
+  getAccessToken,
+  setTokens,
+  getRefreshToken,
+  clearTokens,
+  getUserId,
+  getUserEmail,
+  setAccessToken,
+  setRefreshToken,
+  refreshAccessToken,
+  TOKEN_KEYS
+} from './tokenManager.js';
+
 // API Configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const API_VERSION = 'v1';
@@ -7,8 +21,14 @@ export const API_ENDPOINTS = {
   REGISTER: `${API_BASE_URL}/api/${API_VERSION}/auth/register`,
   LOGIN: `${API_BASE_URL}/api/${API_VERSION}/auth/login`,
   VERIFY_OTP: `${API_BASE_URL}/api/${API_VERSION}/auth/verify-otp`,
-  REFRESH_TOKEN: `${API_BASE_URL}/api/${API_VERSION}/auth/refresh`,
+  REFRESH_TOKEN: `${API_BASE_URL}/api/${API_VERSION}/auth/refresh-token`,
   LOGOUT: `${API_BASE_URL}/api/${API_VERSION}/auth/logout`,
+  ME: `${API_BASE_URL}/api/${API_VERSION}/auth/me`,
+  SESSIONS: `${API_BASE_URL}/api/${API_VERSION}/auth/sessions`,
+  CHANGE_PASSWORD: `${API_BASE_URL}/api/${API_VERSION}/auth/change-password`,
+  LOGOUT_ALL_DEVICES: `${API_BASE_URL}/api/${API_VERSION}/auth/logout-all-devices`,
+  REQUEST_PASSWORD_RESET: `${API_BASE_URL}/api/${API_VERSION}/auth/request-password-reset`,
+  RESET_PASSWORD: `${API_BASE_URL}/api/${API_VERSION}/auth/reset-password`,
   
   // Posts endpoints
   POSTS: `${API_BASE_URL}/api/${API_VERSION}/posts`,
@@ -32,16 +52,24 @@ export const API_ENDPOINTS = {
   USERS: `${API_BASE_URL}/api/${API_VERSION}/users`,
 };
 
-// Token storage keys
-export const TOKEN_KEYS = {
-  ACCESS_TOKEN: 'access_token',
-  REFRESH_TOKEN: 'refresh_token',
-  USER_ID: 'user_id',
-  EMAIL: 'user_email',
-};
-
-// API request helper with proper error handling
-export async function apiRequest(endpoint, options = {}) {
+/**
+ * API Request Handler with Automatic Token Refresh
+ * 
+ * Real-world production flow:
+ * 1. Add access token to Authorization header
+ * 2. Send request
+ * 3. If 401 (Unauthorized):
+ *    - Token might be expired
+ *    - Automatically call refresh endpoint
+ *    - Get new tokens
+ *    - Retry original request with new token
+ * 4. If refresh fails:
+ *    - Refresh token is invalid
+ *    - Clear all tokens
+ *    - User must login again
+ */
+export async function apiRequest(endpoint, options = {}, retryCount = 0) {
+  const MAX_RETRIES = 1; // Only retry once to prevent infinite loops
   const { includeToken = false, ...fetchOptions } = options;
 
   const headers = {
@@ -49,13 +77,28 @@ export async function apiRequest(endpoint, options = {}) {
     ...fetchOptions.headers,
   };
 
-  // Add auth token if needed
+  // For unauthenticated endpoints, ALWAYS remove any existing Authorization header
+  const isProtectedEndpoint = includeToken || endpoint.includes('/settings') || endpoint.includes('/profile/') || endpoint.includes('/posts/');
+  
+  if (!includeToken) {
+    // Explicitly remove Authorization header for public endpoints
+    delete headers.Authorization;
+    console.log('[API] PUBLIC endpoint - explicitly removed any Authorization header');
+  }
+
+  // Add auth token if includeToken is true
   if (includeToken) {
     const accessToken = getAccessToken();
     if (accessToken) {
       headers.Authorization = `Bearer ${accessToken}`;
+      console.log('[API] PROTECTED endpoint - Using access token:', accessToken.substring(0, 20) + '...');
+    } else {
+      console.warn('[API] PROTECTED endpoint but no access token available');
     }
   }
+  
+  console.log('[API] Request to:', endpoint);
+  console.log('[API] Headers:', { ...headers, Authorization: headers.Authorization ? 'Bearer [token]' : 'none' });
 
   try {
     const response = await fetch(endpoint, {
@@ -63,24 +106,73 @@ export async function apiRequest(endpoint, options = {}) {
       headers,
     });
 
-    const data = await response.json();
+    // Parse response carefully (store for reuse)
+    let data;
+    try {
+      if (response.headers.get('content-type')?.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+    } catch (parseError) {
+      console.warn('[API] Failed to parse response:', parseError);
+      data = {};
+    }
+
+    // ===== HANDLE 401 UNAUTHORIZED (Token Expired) =====
+    // This works even if token was manually added in headers!
+    if (response.status === 401 && retryCount < MAX_RETRIES) {
+      console.warn('[API 401] Access token invalid/expired, attempting refresh...');
+      
+      const refreshResult = await refreshAccessToken();
+      
+      if (refreshResult.success) {
+        // Token refreshed successfully, retry with FRESH token
+        // Remove any stale Authorization header and use fresh token from manager
+        const retryOptions = { ...options };
+        retryOptions.includeToken = true; // Use fresh token from manager
+        
+        // Remove stale Authorization header if it exists
+        if (retryOptions.headers) {
+          const newHeaders = { ...retryOptions.headers };
+          delete newHeaders.Authorization; // Remove old token
+          retryOptions.headers = newHeaders;
+        }
+        
+        console.log('[API] Token refreshed successfully, retrying request with fresh token...');
+        return apiRequest(endpoint, retryOptions, retryCount + 1);
+      } else {
+        // Refresh failed, user needs to login again
+        console.error('[API 401] Token refresh failed, clearing tokens and redirecting...');
+        clearTokens();
+        
+        // Redirect to login
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
+        
+        throw new Error('Session expired. Please login again.');
+      }
+    }
 
     if (!response.ok) {
       // Handle different error response formats from backend
       let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
       
-      if (data.detail) {
-        if (Array.isArray(data.detail)) {
-          // Pydantic validation errors (array format)
-          errorMsg = data.detail[0]?.msg || data.detail[0] || errorMsg;
-        } else {
-          // Simple string detail message
-          errorMsg = data.detail;
+      if (typeof data === 'object' && data !== null) {
+        if (data.detail) {
+          if (Array.isArray(data.detail)) {
+            // Pydantic validation errors (array format)
+            errorMsg = data.detail[0]?.msg || data.detail[0] || errorMsg;
+          } else {
+            // Simple string detail message
+            errorMsg = data.detail;
+          }
+        } else if (data.message) {
+          errorMsg = data.message;
+        } else if (data.error) {
+          errorMsg = data.error;
         }
-      } else if (data.message) {
-        errorMsg = data.message;
-      } else if (data.error) {
-        errorMsg = data.error;
       }
       
       throw new Error(errorMsg);
@@ -94,98 +186,18 @@ export async function apiRequest(endpoint, options = {}) {
   }
 }
 
-// Token management functions
-// INDUSTRY STANDARD: Tokens should ideally be stored in HTTP-only cookies set by backend.
-// This approach is more secure as cookies are automatically sent with requests
-// and cannot be accessed from JavaScript (preventing XSS attacks).
-//
-// Until HTTP-only cookies are implemented, these functions provide secure localStorage access:
-
-export function getAccessToken() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(TOKEN_KEYS.ACCESS_TOKEN);
-  } catch (err) {
-    console.warn('Failed to access token from localStorage:', err);
-    return null;
-  }
-}
-
-export function getRefreshToken() {
-  if (typeof window === 'undefined') return null;
-  try {
-    return localStorage.getItem(TOKEN_KEYS.REFRESH_TOKEN);
-  } catch (err) {
-    console.warn('Failed to access refresh token from localStorage:', err);
-    return null;
-  }
-}
-
-export function setTokens(accessToken, refreshToken, userId, email) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(TOKEN_KEYS.ACCESS_TOKEN, accessToken);
-    localStorage.setItem(TOKEN_KEYS.REFRESH_TOKEN, refreshToken);
-    if (userId) localStorage.setItem(TOKEN_KEYS.USER_ID, userId.toString());
-    if (email) localStorage.setItem(TOKEN_KEYS.EMAIL, email);
-    
-    // Also set cookies for server-side middleware
-    const expiryDays = 1; // 1 day
-    const expiryDate = new Date();
-    expiryDate.setTime(expiryDate.getTime() + (expiryDays * 24 * 60 * 60 * 1000));
-    const expires = `expires=${expiryDate.toUTCString()}`;
-    
-    document.cookie = `access_token=${accessToken};${expires};path=/`;
-    if (refreshToken) document.cookie = `refresh_token=${refreshToken};${expires};path=/`;
-    if (userId) document.cookie = `user_id=${userId};${expires};path=/`;
-    if (email) document.cookie = `user_email=${email};${expires};path=/`;
-    
-    // Remove temporary pending data
-    try {
-      localStorage.removeItem('pending_email');
-      localStorage.removeItem('pending_user_id');
-    } catch (e) {
-      // Ignore errors when removing temporary data
-    }
-  } catch (err) {
-    console.error('Failed to store tokens in localStorage:', err);
-  }
-}
-
-export function clearTokens() {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(TOKEN_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(TOKEN_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(TOKEN_KEYS.USER_ID);
-    localStorage.removeItem(TOKEN_KEYS.EMAIL);
-    
-    // Also clear cookies
-    document.cookie = `access_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
-    document.cookie = `refresh_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
-    document.cookie = `user_id=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
-    document.cookie = `user_email=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/`;
-  } catch (err) {
-    console.warn('Failed to clear tokens from localStorage:', err);
-  }
-}
-
-export function isAuthenticated() {
-  return getAccessToken() !== null;
-}
-
-export function getUserId() {
-  if (typeof window === 'undefined') return null;
-  try {
-    const userId = localStorage.getItem(TOKEN_KEYS.USER_ID);
-    return userId ? parseInt(userId) : null;
-  } catch (err) {
-    console.warn('Failed to get user ID from localStorage:', err);
-    return null;
-  }
-}
-
-export function getUserEmail() {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEYS.EMAIL);
-}
+// ===== TOKEN MANAGEMENT (Already imported from tokenManager at top) =====
+// Functions are re-exported below
+export {
+  getAccessToken, 
+  getRefreshToken, 
+  setTokens, 
+  clearTokens, 
+  isAuthenticated, 
+  getUserId, 
+  getUserEmail,
+  setAccessToken,
+  setRefreshToken,
+  refreshAccessToken,
+  TOKEN_KEYS
+};

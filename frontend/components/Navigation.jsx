@@ -134,6 +134,24 @@ export default function Navigation() {
             {isSidebarOpen && <span className="font-semibold text-base">Profile</span>}
           </Link>
 
+          {/* Settings */}
+          <Link
+            href="/settings"
+            className={`flex items-center gap-4 px-4 py-3 rounded-lg transition-all duration-200 ${
+              isActive('/settings')
+                ? isDark
+                  ? 'bg-gray-900 text-white'
+                  : 'bg-gray-100 text-black'
+                : isDark
+                ? 'text-gray-400 hover:text-white hover:bg-gray-900'
+                : 'text-gray-700 hover:text-black hover:bg-gray-100'
+            }`}
+            title={!isSidebarOpen ? 'Settings' : ''}
+          >
+            <span className="text-2xl">⚙️</span>
+            {isSidebarOpen && <span className="font-semibold text-base">Settings</span>}
+          </Link>
+
           {/* Logout */}
           <button
             onClick={handleLogout}
@@ -249,6 +267,23 @@ export default function Navigation() {
           >
             <span className="text-2xl">👤</span>
             <span className="font-semibold">Profile</span>
+          </Link>
+
+          <Link
+            href="/settings"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`flex items-center gap-4 px-4 py-4 border-b transition-all duration-200 ${
+              isActive('/settings')
+                ? isDark
+                  ? 'bg-gray-900 text-white border-gray-700'
+                  : 'bg-gray-100 text-black border-gray-200'
+                : isDark
+                ? 'text-gray-400 hover:text-white hover:bg-gray-900 border-gray-800'
+                : 'text-gray-700 hover:text-black hover:bg-gray-100 border-gray-200'
+            }`}
+          >
+            <span className="text-2xl">⚙️</span>
+            <span className="font-semibold">Settings</span>
           </Link>
 
           <button

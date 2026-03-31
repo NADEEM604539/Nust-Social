@@ -210,6 +210,11 @@ export default function PostDetailModal({ postId }) {
         return;
       }
 
+      // Store previous state for potential revert
+      const previousVote = userVote;
+      const previousTrueVotes = trueVotes;
+      const previousFalseVotes = falseVotes;
+
       // Calculate new counts BEFORE API call
       let newTrueVotes = trueVotes;
       let newFalseVotes = falseVotes;
@@ -247,6 +252,7 @@ export default function PostDetailModal({ postId }) {
       setFalseVotes(newFalseVotes);
 
       // Handle API calls - if removing vote, DELETE only; if switching, DELETE then POST
+      let voteResponse = null;
       if (userVote === voteType) {
         // Removing vote - just call DELETE
         console.log(`PostDetail[${post.id}]: Calling DELETE to unvote`);
@@ -261,7 +267,7 @@ export default function PostDetailModal({ postId }) {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
@@ -269,26 +275,64 @@ export default function PostDetailModal({ postId }) {
       } else {
         // Adding new vote - just POST
         console.log(`PostDetail[${post.id}]: Calling POST to vote ${voteType}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
         });
       }
 
-      console.log(`PostDetail[${post.id}]: Vote completed successfully`);
+      console.log(`PostDetail[${post.id}]: Vote completed successfully, response:`, voteResponse);
 
-      // Lock button for 2.5 seconds after successful vote
-      setVoteLocked(true);
-      setVoteLockTimeRemaining(2.5);
+      setError(''); // Clear any previous errors
+
+      // CRITICAL: Refetch post from backend to get latest vote counts from ALL users
+      console.log(`PostDetail[${post.id}]: Refetching post data after vote`);
+      try {
+        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+          method: 'GET',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+
+        if (response && response.id) {
+          setPost(response);
+          setTrueVotes(response.stats?.rumor_true_votes || 0);
+          setFalseVotes(response.stats?.rumor_false_votes || 0);
+          setUserVote(response.user_vote || null);
+          console.log(`PostDetail[${post.id}]: Updated vote counts - TRUE: ${response.stats?.rumor_true_votes}, FALSE: ${response.stats?.rumor_false_votes}`);
+        }
+      } catch (refetchError) {
+        console.error('Error refetching post after vote:', refetchError);
+      }
+
     } catch (error) {
       console.error(`PostDetail[${post.id}]: Error voting:`, error);
-      setError('Failed to vote');
+      
+      // Check if error is rate limit error (only lock on rate limit)
+      const errorMsg = error.message || '';
+      if (errorMsg.includes('wait') || errorMsg.includes('Please wait') || errorMsg.includes('seconds')) {
+        // Extract wait time from error message if possible
+        const match = errorMsg.match(/(\d+)\s*seconds?/);
+        if (match) {
+          const waitSeconds = parseInt(match[1]) + 0.5;
+          console.log(`PostDetail[${post.id}]: Rate limited, locking for ${waitSeconds} seconds`);
+          setVoteLocked(true);
+          setVoteLockTimeRemaining(waitSeconds);
+          setError(`You can vote again in ${Math.ceil(waitSeconds)} seconds`);
+        } else {
+          setError('You can only change your vote every 5 minutes');
+          setVoteLocked(true);
+          setVoteLockTimeRemaining(300.5);
+        }
+      } else {
+        setError('Failed to vote');
+      }
+
       // REVERT: On error, revert to previous state
       console.log(`PostDetail[${post.id}]: Reverting vote on error`);
-      setUserVote(post.user_vote || null);
-      setTrueVotes(post.stats?.rumor_true_votes || 0);
-      setFalseVotes(post.stats?.rumor_false_votes || 0);
+      setUserVote(previousVote);
+      setTrueVotes(previousTrueVotes);
+      setFalseVotes(previousFalseVotes);
     } finally {
       setVoteLoading(false);
     }

@@ -220,7 +220,7 @@ async def react_to_post(
     current_user: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY)"""
+    """React to post (LIKE, LOVE, HAHA, WOW, SAD, ANGRY) with reaction power tracking"""
     success, message, data = PostService.react_to_post(
         db=db,
         post_id=post_id,
@@ -234,7 +234,9 @@ async def react_to_post(
     return {
         "message": message,
         "reaction_type": data["reaction_type"],
-        "post_id": data["post_id"]
+        "post_id": data["post_id"],
+        "reaction_weight": data["reaction_weight"],
+        "changed": data["changed"]
     }
 
 
@@ -269,7 +271,7 @@ async def vote_on_rumor(
     current_user: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Vote TRUE or FALSE on a rumor post"""
+    """Vote TRUE or FALSE on a rumor post with voting power tracking"""
     success, message, data = PostService.vote_on_rumor(
         db=db,
         post_id=post_id,
@@ -283,9 +285,13 @@ async def vote_on_rumor(
     return {
         "message": message,
         "vote": data["vote"],
+        "vote_weight": data["vote_weight"],
         "total_votes_true": data["total_votes_true"],
         "total_votes_false": data["total_votes_false"],
-        "percentage_true": data["percentage_true"]
+        "percentage_true": data["percentage_true"],
+        "total_votes_true_weighted": data["total_votes_true_weighted"],
+        "total_votes_false_weighted": data["total_votes_false_weighted"],
+        "percentage_true_weighted": data["percentage_true_weighted"]
     }
 
 
@@ -296,7 +302,7 @@ async def delete_vote(
     current_user: int = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Remove vote from a rumor post"""
+    """Remove vote from a rumor post with history tracking"""
     success, message, data = PostService.delete_vote(
         db=db,
         post_id=post_id,
@@ -312,7 +318,10 @@ async def delete_vote(
         "removed_vote": data["removed_vote"],
         "total_votes_true": data["total_votes_true"],
         "total_votes_false": data["total_votes_false"],
-        "percentage_true": data["percentage_true"]
+        "percentage_true": data["percentage_true"],
+        "total_votes_true_weighted": data["total_votes_true_weighted"],
+        "total_votes_false_weighted": data["total_votes_false_weighted"],
+        "percentage_true_weighted": data["percentage_true_weighted"]
     }
 
 

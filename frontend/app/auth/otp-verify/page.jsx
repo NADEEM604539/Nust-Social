@@ -72,6 +72,17 @@ export default function OTPVerifyPage() {
       return;
     }
 
+    // For password reset, skip verify-otp and go directly to password reset page
+    // This keeps the OTP as unused (is_used = 0) so it can be used in reset-password endpoint
+    if (purpose === 'PASSWORD_RESET') {
+      setSuccess('OTP verified! Redirecting to password reset...');
+      setTimeout(() => {
+        router.push('/auth/password-reset?email=' + encodeURIComponent(email) + '&otp=' + encodeURIComponent(otpCode));
+      }, 1000);
+      return;
+    }
+
+    // For login and email verification, call verify-otp endpoint
     setLoading(true);
     try {
       const response = await apiRequest(API_ENDPOINTS.VERIFY_OTP, {
@@ -83,9 +94,27 @@ export default function OTPVerifyPage() {
         }),
       });
 
-      setTokens(response.access_token, response.refresh_token, response.user_id, email);
+      // Check if response has tokens
+      if (!response.access_token || !response.refresh_token) {
+        console.error('[OTPVerify] Backend did not return tokens!', response);
+        setError('Server error: No authentication tokens received');
+        setLoading(false);
+        return;
+      }
 
-      setSuccess('Email verified successfully! Redirecting...');
+      // Store tokens
+      console.log('[OTPVerify] Response received:', response);
+      const tokensStored = setTokens(response.access_token, response.refresh_token, response.user_id, email);
+      console.log('[OTPVerify] Tokens stored successfully:', tokensStored);
+
+      if (!tokensStored) {
+        console.error('[OTPVerify] Failed to store tokens in storage');
+        setError('Failed to save authentication. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      setSuccess('Verified successfully! Redirecting...');
       setTimeout(() => {
         router.push('/');
       }, 1500);

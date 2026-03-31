@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { API_ENDPOINTS, apiRequest } from '@/utils/api';
+import { API_ENDPOINTS, apiRequest, clearTokens } from '@/utils/api';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -18,6 +18,12 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Clear any stale tokens when register page loads
+  useEffect(() => {
+    console.log('[RegisterPage] Clearing stale tokens on page load');
+    clearTokens();
+  }, []);
 
   const validateForm = () => {
     if (!formData.username.trim()) {

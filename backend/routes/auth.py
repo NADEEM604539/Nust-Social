@@ -192,9 +192,9 @@ async def reset_password(
     db: Session = Depends(get_db)
 ):
     """
-    Reset password using OTP verification
+    Reset password using OTP verification and return authentication tokens
     """
-    success, message, _ = AuthService.reset_password_with_otp(
+    success, message, tokens = AuthService.reset_password_with_otp(
         db=db,
         email=request.email,
         otp_code=request.otp_code,
@@ -207,7 +207,12 @@ async def reset_password(
             detail=message
         )
     
-    return {"message": message}
+    return {
+        "message": message,
+        "access_token": tokens.get("access_token"),
+        "refresh_token": tokens.get("refresh_token"),
+        "token_type": "bearer"
+    }
 
 
 @router.post("/change-password", response_model=dict)
@@ -378,11 +383,12 @@ async def get_sessions(
     sessions_data = [
         {
             "id": s[0],
-            "ip_address": s[5] if len(s) > 5 else None,
-            "user_agent": s[6] if len(s) > 6 else None,
-            "created_at": s[4].isoformat() if len(s) > 4 and s[4] else None,
-            "expires_at": s[2].isoformat() if len(s) > 2 and s[2] else None,
-            "is_active": s[3] if len(s) > 3 else False
+            "token": s[1],
+            "ip_address": s[6] if len(s) > 6 else None,
+            "user_agent": s[7] if len(s) > 7 else None,
+            "created_at": s[5].isoformat() if len(s) > 5 and s[5] else None,
+            "expires_at": s[3].isoformat() if len(s) > 3 and s[3] else None,
+            "is_active": s[4] if len(s) > 4 else False
         }
         for s in sessions
     ]
@@ -392,3 +398,59 @@ async def get_sessions(
         "total_sessions": len(sessions),
         "sessions": sessions_data
     }
+
+
+@router.delete("/sessions/{session_id}", response_model=dict)
+async def delete_session(
+    session_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Logout from a specific device/session
+    """
+    from sqlalchemy import text
+    
+    try:
+        # Verify the session belongs to the current user
+        session_result = db.execute(
+            text("""
+                SELECT id, user_id FROM user_sessions 
+                WHERE id = :session_id
+            """),
+            {"session_id": session_id}
+        ).fetchone()
+        
+        if not session_result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found"
+            )
+        
+        if session_result[1] != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot delete another user's session"
+            )
+        
+        # Deactivate the session
+        db.execute(
+            text("""
+                UPDATE user_sessions 
+                SET is_active = FALSE 
+                WHERE id = :session_id
+            """),
+            {"session_id": session_id}
+        )
+        db.commit()
+        
+        return {"message": "Session logged out successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to logout session: {str(e)}"
+        )

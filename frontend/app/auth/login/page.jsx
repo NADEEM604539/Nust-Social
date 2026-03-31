@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { API_ENDPOINTS, apiRequest } from '@/utils/api';
+import { API_ENDPOINTS, apiRequest, clearTokens } from '@/utils/api';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,16 +13,30 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Clear any stale tokens when login page loads
+  useEffect(() => {
+    console.log('[LoginPage] Clearing stale tokens on page load');
+    clearTokens();
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
+      console.log('[LoginPage] Login attempt for:', email);
+      console.log('[LoginPage] Tokens after page load - Access:', !!localStorage.getItem('accessToken'), 'Refresh:', !!localStorage.getItem('refreshToken'));
+      
+      // Make sure no tokens are sent with login request
       const response = await apiRequest(API_ENDPOINTS.LOGIN, {
         method: 'POST',
         body: JSON.stringify({ email, password }),
+        // EXPLICIT: Do not pass includeToken at all for login
+        // Do not pass any headers that might contain Authorization
       });
+      
+      console.log('[LoginPage] Login response received:', !!response);
 
       // Pass email via URL params (not localStorage) to avoid data mixing
       router.push('/auth/otp-verify?email=' + encodeURIComponent(email) + '&purpose=LOGIN');

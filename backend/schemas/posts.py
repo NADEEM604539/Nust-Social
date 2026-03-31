@@ -45,6 +45,7 @@ class MediaResponse(BaseModel):
 class PostStats(BaseModel):
     """Post statistics"""
     likes_count: int = 0
+    likes_count_weighted: float = 0.0  # Sum of reaction weights for LIKE reactions
     comments_count: int = 0
     views_count: int = 0
     rumor_true_votes: int = 0
@@ -130,11 +131,14 @@ class ReactionCreate(BaseModel):
 
 class ReactionResponse(BaseModel):
     """Reaction response"""
-    id: int
+    id: Optional[int] = None
     post_id: int
-    user_id: int
-    type: str
-    created_at: datetime
+    user_id: Optional[int] = None
+    reaction_type: str = Field(..., description="LIKE, LOVE, HAHA, WOW, SAD, ANGRY")
+    reaction_weight: float = 1.0  # User's reaction power based on reputation
+    changed: bool = False  # True if changed existing reaction, False if new reaction
+    wait_seconds: Optional[int] = None  # If rate limited, how many seconds to wait
+    created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -150,14 +154,20 @@ class RumorVoteCreate(BaseModel):
 
 
 class RumorVoteResponse(BaseModel):
-    """Rumor vote response"""
-    id: int
+    """Rumor vote response with voting power and weighted votes"""
     post_id: int
     vote: str
+    vote_weight: float = Field(..., description="User's voting power (1.0 = normal, max 3.0)")
+    
+    # Raw vote counts
     total_votes_true: int
     total_votes_false: int
     percentage_true: float
-    created_at: datetime
+    
+    # Weighted vote counts (by user reputation)
+    total_votes_true_weighted: float
+    total_votes_false_weighted: float
+    percentage_true_weighted: float
     
     class Config:
         from_attributes = True
@@ -196,14 +206,3 @@ class ReportResponse(BaseModel):
     class Config:
         from_attributes = True
 
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class ReactionCreate(BaseModel):
-    type: str  # LIKE, LOVE, HAHA, WOW, SAD, ANGRY
-    
-    class Config:
-        from_attributes = True
