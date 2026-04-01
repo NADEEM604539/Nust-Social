@@ -43,38 +43,30 @@ export async function saveFileToPublic(file, filename) {
   }
 }
 
-export async function registerMediaWithBackend(filename, fileType, token) {
+import { apiRequest } from '@/utils/api';
+import { API_ENDPOINTS } from '@/utils/api';
+
+export async function registerMediaWithBackend(filename, fileType) {
   /**
    * Register media with backend
    * Frontend already saved file to /uploads/{filename}
    * We send the URL path to backend to store in database
+   * 
+   * Token refresh is handled automatically by apiRequest
    */
   try {
     const fileUrl = `/uploads/${filename}`; // The URL path where frontend saved the file
     
     console.log(`Registering media URL: ${fileUrl}`);
     
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/media/register`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          url: fileUrl,
-          type: fileType,
-        }),
-      }
-    );
+    const data = await apiRequest('/api/v1/media/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        url: fileUrl,
+        type: fileType,
+      }),
+    });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Registration failed: ${errorData.detail || response.statusText}`);
-    }
-
-    const data = await response.json();
     console.log(`Media registered successfully:`, data);
     
     return {

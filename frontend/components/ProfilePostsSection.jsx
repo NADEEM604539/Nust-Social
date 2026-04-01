@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ProfilePostCard from './ProfilePostCard';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 
 export default function ProfilePostsSection({ userId, category, isDark, refreshTrigger, onPostDeleted }) {
   const [posts, setPosts] = useState([]);
