@@ -78,7 +78,6 @@ export default function UserProfilePage() {
         // Fetch all posts and filter by user_id and non-anonymous
         const postsResponse = await apiRequest(API_ENDPOINTS.GET_FEED, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         
         if (postsResponse?.data?.posts) {

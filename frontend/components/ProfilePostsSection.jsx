@@ -22,12 +22,10 @@ export default function ProfilePostsSection({ userId, category, isDark, refreshT
       try {
         setLoading(true);
         setError('');
-        const token = getAccessToken();
 
         // Fetch all user's posts
         const response = await apiRequest(API_ENDPOINTS.GET_FEED, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         console.log('API Response:', response); // Debug

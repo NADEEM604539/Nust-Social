@@ -26,7 +26,6 @@ export default function SuggestedUsers() {
           `${API_ENDPOINTS.GET_SUGGESTIONS}?limit=5&offset=0`,
           {
             method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
           }
         );
 
@@ -47,12 +46,8 @@ export default function SuggestedUsers() {
 
   const handleFollow = async (userId) => {
     try {
-      const token = getAccessToken();
-      if (!token) return;
-
       await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(userId)}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setFollowingIds((prev) => new Set([...prev, userId]));
