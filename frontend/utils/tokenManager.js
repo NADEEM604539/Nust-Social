@@ -54,11 +54,26 @@ export function setAccessToken(token) {
   try {
     localStorage.setItem(TOKEN_KEYS.ACCESS_TOKEN, token);
     console.log('[TokenManager] Access token stored in localStorage');
-    return true;
   } catch (err) {
-    console.error('[TokenManager] Failed to store access token:', err);
+    console.error('[TokenManager] Failed to store access token in localStorage:', err);
     return false;
   }
+  
+  // IMPORTANT: Also set in cookie for middleware to detect authenticated state
+  try {
+    const expiryDays = 1; // Access token expires in 1 day
+    const expiryDate = new Date();
+    expiryDate.setTime(expiryDate.getTime() + (expiryDays * 24 * 60 * 60 * 1000));
+    const expires = `expires=${expiryDate.toUTCString()}`;
+    
+    document.cookie = `${TOKEN_KEYS.ACCESS_TOKEN}=${token};${expires};path=/;SameSite=Lax`;
+    console.log('[TokenManager] Access token set in cookie for middleware');
+  } catch (err) {
+    console.error('[TokenManager] Failed to set access token cookie:', err);
+    // Don't fail the function - token is still in memory/localStorage
+  }
+  
+  return true;
 }
 
 // ===== REFRESH TOKEN (Cookies - Secure) =====
@@ -107,14 +122,14 @@ export function setRefreshToken(token) {
     
     console.log('[TokenManager] Refresh token verification passed');
     
-    // Also set secure httpOnly cookie (backend ideally sets this)
+    // Set secure cookie for backend use
     const expiryDays = 30;
     const expiryDate = new Date();
     expiryDate.setTime(expiryDate.getTime() + (expiryDays * 24 * 60 * 60 * 1000));
     const expires = `expires=${expiryDate.toUTCString()}`;
     
-    // In production, backend should set httpOnly cookie with Set-Cookie header
-    document.cookie = `${TOKEN_KEYS.REFRESH_TOKEN}=${token};${expires};path=/;Secure;SameSite=Strict`;
+    document.cookie = `${TOKEN_KEYS.REFRESH_TOKEN}=${token};${expires};path=/;SameSite=Lax`;
+    console.log('[TokenManager] Refresh token set in cookie');
     
     return true;
   } catch (err) {
@@ -245,59 +260,109 @@ let refreshPromise = null;
 /**
  * Refresh access token using refresh token
  * This is called automatically on 401 response
+ * Implements token rotation: old tokens are invalidated, new tokens are issued
  * 
- * Returns: { success: boolean, newAccessToken?: string, newRefreshToken?: string }
+ * Returns: { success: boolean, accessToken?: string, refreshToken?: string }
  */
 export async function refreshAccessToken() {
-  // Prevent multiple simultaneous refresh requests
+  // ===== CRITICAL: Prevent multiple simultaneous refresh requests =====
+  // If refresh is already in progress, return the pending promise
   if (isRefreshing) {
+    console.log('[TokenRefresh] Refresh already in progress, returning pending promise...');
     return refreshPromise;
   }
 
   isRefreshing = true;
+  console.log('[TokenRefresh] === TOKEN REFRESH STARTED ===');
+  
   refreshPromise = new Promise(async (resolve) => {
     try {
-      const refreshToken = getRefreshToken();
+      // Get current refresh token
+      const currentRefreshToken = getRefreshToken();
       
-      if (!refreshToken) {
-        console.warn('No refresh token available');
-        isRefreshing = false;
-        resolve({ success: false });
-        return;
-      }
-
-      // Call refresh endpoint
-      const refreshTokenEndpoint = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/refresh-token`;
-      const response = await fetch(refreshTokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          refresh_token: refreshToken
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        // Refresh token is invalid/expired - need to logout
-        console.error('Token refresh failed:', data.detail || data.message);
+      if (!currentRefreshToken) {
+        console.error('[TokenRefresh] CRITICAL: No refresh token available in storage!');
         clearTokens();
         isRefreshing = false;
         resolve({ success: false });
         return;
       }
 
-      // Store new tokens
-      setTokens(
+      console.log('[TokenRefresh] Refresh token found, calling /api/v1/auth/refresh-token...');
+
+      // Determine API base URL (same logic as api.js for consistency)
+      const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+        ? 'http://localhost:8000' 
+        : (typeof window !== 'undefined' && window.location.hostname.includes('localhost'))
+          ? 'http://localhost:8000'
+          : `${typeof window !== 'undefined' ? window.location.protocol : 'http:'}//${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+
+      const refreshTokenEndpoint = `${API_BASE_URL}/api/v1/auth/refresh-token`;
+      console.log('[TokenRefresh] Calling endpoint:', refreshTokenEndpoint);
+
+      // Call refresh endpoint with refresh token in body (NOT in Authorization header)
+      const response = await fetch(refreshTokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          refresh_token: currentRefreshToken
+        }),
+        credentials: 'include',
+      });
+
+      console.log('[TokenRefresh] Response status:', response.status);
+
+      const data = await response.json();
+      console.log('[TokenRefresh] Response data:', { 
+        hasAccessToken: !!data.access_token,
+        hasRefreshToken: !!data.refresh_token,
+        status: response.status
+      });
+
+      if (!response.ok) {
+        // Refresh token is invalid/expired - need to logout
+        const errorDetail = data.detail || data.message || 'Unknown error';
+        console.error('[TokenRefresh] REFRESH FAILED:', errorDetail);
+        console.log('[TokenRefresh] Clearing all tokens and requesting login...');
+        clearTokens();
+        isRefreshing = false;
+        
+        // Redirect to login if in browser
+        if (typeof window !== 'undefined') {
+          window.location.href = '/auth/login';
+        }
+        
+        resolve({ success: false });
+        return;
+      }
+
+      // ===== TOKEN ROTATION: Replace old tokens with new ones =====
+      console.log('[TokenRefresh] === TOKEN ROTATION ===');
+      console.log('[TokenRefresh] Old access token will be replaced');
+      console.log('[TokenRefresh] Old refresh token will be replaced');
+      
+      // Store new tokens via setTokens (which updates memory, localStorage, and cookies)
+      const tokensSet = setTokens(
         data.access_token,
         data.refresh_token,
-        getUserId(),
+        getUserId(),  // Keep existing user info
         getUserEmail()
       );
 
-      console.log('Tokens refreshed successfully');
+      if (!tokensSet) {
+        console.error('[TokenRefresh] CRITICAL: Failed to store refreshed tokens!');
+        clearTokens();
+        isRefreshing = false;
+        resolve({ success: false });
+        return;
+      }
+
+      console.log('[TokenRefresh] === TOKENS REFRESHED & ROTATED SUCCESSFULLY ===');
+      console.log('[TokenRefresh] Access token updated in memory, localStorage, and cookie');
+      console.log('[TokenRefresh] Refresh token updated in localStorage and cookie');
+      
       isRefreshing = false;
       resolve({ 
         success: true, 
@@ -305,9 +370,18 @@ export async function refreshAccessToken() {
         refreshToken: data.refresh_token
       });
     } catch (error) {
-      console.error('Error refreshing token:', error);
+      console.error('[TokenRefresh] EXCEPTION during token refresh:', error);
+      console.error('[TokenRefresh] Error type:', error.constructor.name);
+      console.error('[TokenRefresh] Error message:', error.message);
+      
       clearTokens();
       isRefreshing = false;
+      
+      // Redirect to login if in browser
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login';
+      }
+      
       resolve({ success: false });
     }
   });

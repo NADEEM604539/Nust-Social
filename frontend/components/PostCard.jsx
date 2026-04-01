@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import MediaCarousel from './MediaCarousel';
 import { useTheme } from '@/context/ThemeContext';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 
 export default function PostCard({ post, currentUserId, onDelete, onReact, onVote, onComment, onFollow, onUnfollow }) {
   const { isDark } = useTheme();
@@ -103,10 +103,8 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
             // REFETCH: Get fresh data from backend like PostDetailModal does
       console.log(`PostCard[${post.id}]: Refetching post data after reaction`);
       try {
-        const token = getAccessToken();
-        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+        const response = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         if (response && response.id) {
@@ -147,12 +145,6 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
     try {
       setVoteLoading(true);
       console.log(`PostCard[${post.id}]: Voting ${voteType}, current vote: ${userVote}`);
-
-      const token = getAccessToken();
-      if (!token) {
-        console.error('Not authenticated - cannot vote');
-        return;
-      }
 
       // Store previous state for potential revert
       const previousVote = userVote;
@@ -200,29 +192,25 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
       if (userVote === voteType) {
         // Removing vote - just call DELETE
         console.log(`PostCard[${post.id}]: Calling DELETE to unvote`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else if (userVote) {
         // Switching vote - DELETE previous, then POST new
         console.log(`PostCard[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else {
         // Adding new vote - just POST
         console.log(`PostCard[${post.id}]: Calling POST to vote ${voteType}`);
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       }
 
@@ -230,9 +218,8 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
 
       // REFETCH: Get fresh vote counts from backend like PostDetailModal does
       console.log(`PostCard[${post.id}]: Refetching post data after vote`);
-      const fetchResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+      const fetchResponse = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (fetchResponse && fetchResponse.id) {

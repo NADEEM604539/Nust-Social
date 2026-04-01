@@ -32,7 +32,6 @@ export default function SettingsPage() {
       setLoading(true);
       const response = await apiRequest(API_ENDPOINTS.ME, {
         method: 'GET',
-        includeToken: true,
       });
       setUserInfo(response);
     } catch (err) {
@@ -46,7 +45,6 @@ export default function SettingsPage() {
     try {
       const response = await apiRequest(API_ENDPOINTS.SESSIONS, {
         method: 'GET',
-        includeToken: true,
       });
       setSessions(response.sessions || []);
     } catch (err) {
@@ -71,7 +69,6 @@ export default function SettingsPage() {
       setLoading(true);
       const response = await apiRequest(API_ENDPOINTS.CHANGE_PASSWORD, {
         method: 'POST',
-        includeToken: true,
         body: JSON.stringify({
           old_password: passwordData.oldPassword,
           new_password: passwordData.newPassword,
@@ -97,7 +94,6 @@ export default function SettingsPage() {
       setLoading(true);
       await apiRequest(`${API_ENDPOINTS.SESSIONS}/${sessionId}`, {
         method: 'DELETE',
-        includeToken: true,
       });
       setSuccess('Device logged out successfully');
       fetchActiveSessions();
@@ -118,7 +114,6 @@ export default function SettingsPage() {
       setLoading(true);
       await apiRequest(API_ENDPOINTS.LOGOUT_ALL_DEVICES, {
         method: 'POST',
-        includeToken: true,
       });
       setSuccess('Logged out from all devices');
       clearTokens();

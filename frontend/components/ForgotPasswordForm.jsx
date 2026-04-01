@@ -33,11 +33,14 @@ export default function ForgotPasswordForm() {
     }
 
     try {
-      const response = await apiRequest(API_ENDPOINTS.REQUEST_PASSWORD_RESET, {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-        includeToken: false
-      });
+const response = await apiRequest(
+          API_ENDPOINTS.REQUEST_PASSWORD_RESET,
+          {
+            method: 'POST',
+            body: JSON.stringify({ email }),
+          },
+          false
+        );
 
       // Backend returns OTP in response for testing
       if (response.otp_code) {

@@ -207,11 +207,14 @@ async def reset_password(
             detail=message
         )
     
+    # Return tokens for password reset with user_id
     return {
         "message": message,
         "access_token": tokens.get("access_token"),
         "refresh_token": tokens.get("refresh_token"),
-        "token_type": "bearer"
+        "token_type": tokens.get("token_type", "bearer"),
+        "expires_in": tokens.get("expires_in"),
+        "user_id": tokens.get("user_id")
     }
 
 

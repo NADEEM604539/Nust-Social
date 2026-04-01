@@ -50,15 +50,18 @@ export default function VerifyOTPForm() {
     }
 
     try {
-      await apiRequest(API_ENDPOINTS.VERIFY_OTP, {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-          otp_code: otp,
-          purpose: 'PASSWORD_RESET'
-        }),
-        includeToken: false
-      });
+      await apiRequest(
+        API_ENDPOINTS.VERIFY_OTP,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            email,
+            otp_code: otp,
+            purpose: 'LOGIN'
+          }),
+        },
+        false
+      );
 
       setSuccess(true);
       // Redirect to reset password after 2 seconds
@@ -77,11 +80,14 @@ export default function VerifyOTPForm() {
     setError('');
 
     try {
-      const resendResponse = await apiRequest(API_ENDPOINTS.REQUEST_PASSWORD_RESET, {
-        method: 'POST',
-        body: JSON.stringify({ email }),
-        includeToken: false
-      });
+      const resendResponse = await apiRequest(
+        API_ENDPOINTS.REQUEST_PASSWORD_RESET,
+        {
+          method: 'POST',
+          body: JSON.stringify({ email }),
+        },
+        false
+      );
 
       setResendTimer(60); // 60 second cooldown
       setOtp('');

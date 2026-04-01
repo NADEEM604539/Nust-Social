@@ -1,203 +1,212 @@
-// Import token manager first (must be before apiRequest)
-import {
-  getAccessToken,
-  setTokens,
-  getRefreshToken,
-  clearTokens,
-  getUserId,
-  getUserEmail,
-  setAccessToken,
-  setRefreshToken,
-  refreshAccessToken,
-  TOKEN_KEYS
-} from './tokenManager.js';
+/**
+ * API Module
+ * Purpose: Centralized API endpoint configuration and request handler with token management
+ * 
+ * Features:
+ * - Centralized API endpoint definitions
+ * - Token-aware request handling (adds Authorization header automatically)
+ * - Auto token refresh on 401
+ * - Error handling and token validation
+ */
 
-// API Configuration
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const API_VERSION = 'v1';
+import { getAccessToken, setAccessToken, setTokens, clearTokens, getRefreshToken, refreshAccessToken, getUserId } from './tokenManager';
 
+// ===== API BASE CONFIGURATION =====
+const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost' 
+  ? 'http://localhost:8000' 
+  : (typeof window !== 'undefined' && window.location.hostname.includes('localhost'))
+    ? 'http://localhost:8000'
+    : `${typeof window !== 'undefined' ? window.location.protocol : 'http:'}//${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+
+// ===== API ENDPOINTS =====
 export const API_ENDPOINTS = {
-  // Auth endpoints
-  REGISTER: `${API_BASE_URL}/api/${API_VERSION}/auth/register`,
-  LOGIN: `${API_BASE_URL}/api/${API_VERSION}/auth/login`,
-  VERIFY_OTP: `${API_BASE_URL}/api/${API_VERSION}/auth/verify-otp`,
-  REFRESH_TOKEN: `${API_BASE_URL}/api/${API_VERSION}/auth/refresh-token`,
-  LOGOUT: `${API_BASE_URL}/api/${API_VERSION}/auth/logout`,
-  ME: `${API_BASE_URL}/api/${API_VERSION}/auth/me`,
-  SESSIONS: `${API_BASE_URL}/api/${API_VERSION}/auth/sessions`,
-  CHANGE_PASSWORD: `${API_BASE_URL}/api/${API_VERSION}/auth/change-password`,
-  LOGOUT_ALL_DEVICES: `${API_BASE_URL}/api/${API_VERSION}/auth/logout-all-devices`,
-  REQUEST_PASSWORD_RESET: `${API_BASE_URL}/api/${API_VERSION}/auth/request-password-reset`,
-  RESET_PASSWORD: `${API_BASE_URL}/api/${API_VERSION}/auth/reset-password`,
+  // Authentication
+  REGISTER: '/api/v1/auth/register',
+  LOGIN: '/api/v1/auth/login',
+  VERIFY_OTP: '/api/v1/auth/verify-otp',
+  REFRESH_TOKEN: '/api/v1/auth/refresh-token',
+  LOGOUT: '/api/v1/auth/logout',
+  REQUEST_PASSWORD_RESET: '/api/v1/auth/request-password-reset',
+  RESET_PASSWORD: '/api/v1/auth/reset-password',
+  CHANGE_PASSWORD: '/api/v1/auth/change-password',
+  ME: '/api/v1/auth/me',
+  SESSIONS: '/api/v1/auth/sessions',
+  LOGOUT_ALL_DEVICES: '/api/v1/auth/logout-all-devices',
   
-  // Posts endpoints
-  POSTS: `${API_BASE_URL}/api/${API_VERSION}/posts`,
+  // Users
+  GET_USER_PROFILE: '/api/v1/users/profile',
+  UPDATE_USER_PROFILE: '/api/v1/users/profile',
+  GET_USER: (id) => `/api/v1/users/profile/${id}`,
+  FOLLOW_USER: (id) => `/api/v1/users/${id}/follow`,
+  UNFOLLOW_USER: (id) => `/api/v1/users/${id}/follow`,
+  GET_FOLLOWERS: (id) => `/api/v1/users/${id}/followers`,
+  GET_FOLLOWING: (id) => `/api/v1/users/${id}/following`,
+  GET_SUGGESTIONS: '/api/v1/users/suggestions/recommended',
+  GET_USER_STATS: (id) => `/api/v1/users/${id}/stats`,
   
-  // Media endpoints
-  MEDIA: `${API_BASE_URL}/api/${API_VERSION}/media`,
+  // Posts
+  GET_FEED: '/api/v1/posts',
+  CREATE_POST: '/api/v1/posts',
+  GET_POST: (id) => `/api/v1/posts/${id}`,
+  UPDATE_POST: (id) => `/api/v1/posts/${id}`,
+  DELETE_POST: (id) => `/api/v1/posts/${id}`,
+  LIKE_POST: (id) => `/api/v1/posts/${id}/react`,
+  UNLIKE_POST: (id) => `/api/v1/posts/${id}/react`,
+  VOTE_POST: (id) => `/api/v1/posts/${id}/vote`,
+  UNVOTE_POST: (id) => `/api/v1/posts/${id}/vote`,
   
-  // Societies endpoints
-  SOCIETIES: `${API_BASE_URL}/api/${API_VERSION}/societies`,
+  // Comments
+  CREATE_COMMENT: (postId) => `/api/v1/posts/${postId}/comment`,
+  DELETE_COMMENT: (postId, commentId) => `/api/v1/posts/${postId}/comment/${commentId}`,
   
-  // Marketplace endpoints
-  MARKETPLACE: `${API_BASE_URL}/api/${API_VERSION}/marketplace`,
+  // Notifications
+  GET_NOTIFICATIONS: '/api/v1/notifications',
+  MARK_NOTIFICATIONS_READ: '/api/v1/notifications/read',
+  GET_UNREAD_COUNT: '/api/v1/notifications/unread-count',
   
-  // Messages endpoints
-  MESSAGES: `${API_BASE_URL}/api/${API_VERSION}/messages`,
-  
-  // Notifications endpoints
-  NOTIFICATIONS: `${API_BASE_URL}/api/${API_VERSION}/notifications`,
-  
-  // Users endpoints
-  USERS: `${API_BASE_URL}/api/${API_VERSION}/users`,
+  // Media Upload
+  UPLOAD_MEDIA: '/api/v1/media/upload',
+  DELETE_MEDIA: (id) => `/api/v1/media/${id}`,
 };
 
-/**
- * API Request Handler with Automatic Token Refresh
- * 
- * Real-world production flow:
- * 1. Add access token to Authorization header
- * 2. Send request
- * 3. If 401 (Unauthorized):
- *    - Token might be expired
- *    - Automatically call refresh endpoint
- *    - Get new tokens
- *    - Retry original request with new token
- * 4. If refresh fails:
- *    - Refresh token is invalid
- *    - Clear all tokens
- *    - User must login again
- */
-export async function apiRequest(endpoint, options = {}, retryCount = 0) {
-  const MAX_RETRIES = 1; // Only retry once to prevent infinite loops
-  const { includeToken = false, ...fetchOptions } = options;
+// ===== TOKEN REFRESH is handled by tokenManager =====
 
+// ===== MAIN API REQUEST HANDLER =====
+export async function apiRequest(
+  endpoint,
+  options = {},
+  includeToken = true,
+  retryOnUnauthorized = true
+) {
+  if (typeof window === 'undefined') {
+    throw new Error('apiRequest can only be called from client-side');
+  }
+
+  const url = `${API_BASE_URL}${endpoint}`;
+  
+  // Prepare headers
   const headers = {
     'Content-Type': 'application/json',
-    ...fetchOptions.headers,
+    ...options.headers,
   };
 
-  // For unauthenticated endpoints, ALWAYS remove any existing Authorization header
-  const isProtectedEndpoint = includeToken || endpoint.includes('/settings') || endpoint.includes('/profile/') || endpoint.includes('/posts/');
-  
-  if (!includeToken) {
-    // Explicitly remove Authorization header for public endpoints
-    delete headers.Authorization;
-    console.log('[API] PUBLIC endpoint - explicitly removed any Authorization header');
-  }
-
-  // Add auth token if includeToken is true
+  // Add authorization token if requested and available
   if (includeToken) {
-    const accessToken = getAccessToken();
-    if (accessToken) {
-      headers.Authorization = `Bearer ${accessToken}`;
-      console.log('[API] PROTECTED endpoint - Using access token:', accessToken.substring(0, 20) + '...');
-    } else {
-      console.warn('[API] PROTECTED endpoint but no access token available');
+    const token = getAccessToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
   }
-  
-  console.log('[API] Request to:', endpoint);
-  console.log('[API] Headers:', { ...headers, Authorization: headers.Authorization ? 'Bearer [token]' : 'none' });
+
+  console.log(`[API] Request: ${options.method || 'GET'} ${endpoint}`);
 
   try {
-    const response = await fetch(endpoint, {
-      ...fetchOptions,
+    const response = await fetch(url, {
+      ...options,
       headers,
+      credentials: 'include', // Send cookies with request
     });
 
-    // Parse response carefully (store for reuse)
-    let data;
-    try {
-      if (response.headers.get('content-type')?.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
-      }
-    } catch (parseError) {
-      console.warn('[API] Failed to parse response:', parseError);
-      data = {};
-    }
-
-    // ===== HANDLE 401 UNAUTHORIZED (Token Expired) =====
-    // This works even if token was manually added in headers!
-    if (response.status === 401 && retryCount < MAX_RETRIES) {
-      console.warn('[API 401] Access token invalid/expired, attempting refresh...');
-      
-      const refreshResult = await refreshAccessToken();
-      
-      if (refreshResult.success) {
-        // Token refreshed successfully, retry with FRESH token
-        // Remove any stale Authorization header and use fresh token from manager
-        const retryOptions = { ...options };
-        retryOptions.includeToken = true; // Use fresh token from manager
-        
-        // Remove stale Authorization header if it exists
-        if (retryOptions.headers) {
-          const newHeaders = { ...retryOptions.headers };
-          delete newHeaders.Authorization; // Remove old token
-          retryOptions.headers = newHeaders;
+    // Handle unauthorized response
+    if (response.status === 401 && retryOnUnauthorized && includeToken) {
+      console.log('[API] Received 401, attempting token refresh...');
+      try {
+        const refreshResult = await refreshAccessToken();
+        if (refreshResult.success && refreshResult.accessToken) {
+          console.log('[API] Token refreshed successfully, retrying original request...');
+          // Retry the original request with new token
+          return apiRequest(endpoint, options, true, false);
+        } else {
+          console.error('[API] Token refresh failed');
+          clearTokens();
+          if (typeof window !== 'undefined') {
+            window.location.href = '/auth/login';
+          }
+          throw new Error('Token refresh failed - session expired');
         }
-        
-        console.log('[API] Token refreshed successfully, retrying request with fresh token...');
-        return apiRequest(endpoint, retryOptions, retryCount + 1);
-      } else {
-        // Refresh failed, user needs to login again
-        console.error('[API 401] Token refresh failed, clearing tokens and redirecting...');
+      } catch (refreshError) {
+        console.error('[API] Token refresh error:', refreshError);
         clearTokens();
-        
-        // Redirect to login
+        // Redirect to login if in browser
         if (typeof window !== 'undefined') {
           window.location.href = '/auth/login';
         }
-        
-        throw new Error('Session expired. Please login again.');
+        throw refreshError;
       }
     }
 
+    // Parse response
+    let data;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else if (contentType && contentType.includes('text')) {
+      data = await response.text();
+    } else {
+      data = await response.blob();
+    }
+
+    // Handle error responses
     if (!response.ok) {
-      // Handle different error response formats from backend
-      let errorMsg = `HTTP ${response.status}: ${response.statusText}`;
-      
-      if (typeof data === 'object' && data !== null) {
-        if (data.detail) {
-          if (Array.isArray(data.detail)) {
-            // Pydantic validation errors (array format)
-            errorMsg = data.detail[0]?.msg || data.detail[0] || errorMsg;
-          } else {
-            // Simple string detail message
-            errorMsg = data.detail;
-          }
-        } else if (data.message) {
-          errorMsg = data.message;
-        } else if (data.error) {
-          errorMsg = data.error;
-        }
-      }
-      
-      throw new Error(errorMsg);
+      const errorMessage = data?.detail || data?.message || `HTTP Error: ${response.status}`;
+      console.error(`[API] Error ${response.status}:`, errorMessage);
+      throw new Error(errorMessage);
     }
 
+    console.log(`[API] Success: ${endpoint}`, data);
     return data;
   } catch (error) {
-    throw error instanceof Error
-      ? error
-      : new Error('An unexpected error occurred');
+    console.error(`[API] Request failed:`, error);
+    throw error;
   }
 }
 
-// ===== TOKEN MANAGEMENT (Already imported from tokenManager at top) =====
-// Functions are re-exported below
-export {
-  getAccessToken, 
-  getRefreshToken, 
-  setTokens, 
-  clearTokens, 
-  isAuthenticated, 
-  getUserId, 
-  getUserEmail,
-  setAccessToken,
-  setRefreshToken,
-  refreshAccessToken,
-  TOKEN_KEYS
-};
+// ===== EXPORTED UTILITIES =====
+
+/**
+ * Set authentication tokens and user info
+ * Used by OTP verification to store tokens after login
+ */
+export { setTokens, clearTokens };
+
+/**
+ * Get the current access token
+ */
+export { getAccessToken };
+
+/**
+ * Get the current refresh token
+ */
+export { getRefreshToken };
+
+/**
+ * Get the current user ID
+ */
+export { getUserId };
+
+/**
+ * Logout helper
+ */
+export async function logout() {
+  try {
+    await apiRequest(API_ENDPOINTS.LOGOUT, { method: 'POST' }, true);
+  } catch (error) {
+    console.warn('[API] Logout request failed, clearing tokens anyway:', error);
+  } finally {
+    clearTokens();
+  }
+}
+
+/**
+ * Helper to check if user is authenticated
+ */
+export function isAuthenticated() {
+  return !!getAccessToken();
+}
+
+/**
+ * Helper to check if user has a stored refresh token
+ */
+export function hasRefreshToken() {
+  return !!getRefreshToken();
+}

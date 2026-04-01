@@ -23,7 +23,7 @@ export default function SuggestedUsers() {
         }
 
         const response = await apiRequest(
-          `${API_ENDPOINTS.USERS}/suggestions/recommended?limit=5&offset=0`,
+          `${API_ENDPOINTS.GET_SUGGESTIONS}?limit=5&offset=0`,
           {
             method: 'GET',
             headers: { Authorization: `Bearer ${token}` },
@@ -50,7 +50,7 @@ export default function SuggestedUsers() {
       const token = getAccessToken();
       if (!token) return;
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(userId)}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

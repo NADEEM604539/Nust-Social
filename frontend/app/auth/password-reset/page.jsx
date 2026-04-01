@@ -67,7 +67,7 @@ export default function PasswordResetPage() {
           otp_code: otp,
           new_password: password,
         }),
-      });
+      }, false); // No auth token needed for password reset
 
       // Check if response has tokens
       if (!response.access_token || !response.refresh_token) {
@@ -79,7 +79,7 @@ export default function PasswordResetPage() {
 
       // Store tokens  
       console.log('[PasswordReset] Response received:', response);
-      const tokensStored = setTokens(response.access_token, response.refresh_token);
+      const tokensStored = setTokens(response.access_token, response.refresh_token, response.user_id, email);
       console.log('[PasswordReset] Tokens stored successfully:', tokensStored);
 
       if (!tokensStored) {

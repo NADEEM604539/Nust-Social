@@ -25,7 +25,7 @@ export default function ProfilePostsSection({ userId, category, isDark, refreshT
         const token = getAccessToken();
 
         // Fetch all user's posts
-        const response = await apiRequest(API_ENDPOINTS.POSTS, {
+        const response = await apiRequest(API_ENDPOINTS.GET_FEED, {
           method: 'GET',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });

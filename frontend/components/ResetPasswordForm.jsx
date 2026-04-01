@@ -98,15 +98,18 @@ export default function ResetPasswordForm() {
     }
 
     try {
-      await apiRequest(API_ENDPOINTS.RESET_PASSWORD, {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-          otp_code: otp,
-          new_password: newPassword
-        }),
-        includeToken: false
-      });
+      await apiRequest(
+        API_ENDPOINTS.RESET_PASSWORD,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            email,
+            otp_code: otp,
+            new_password: newPassword
+          }),
+        },
+        false
+      );
 
       setSuccess(true);
       // Redirect to login after 3 seconds

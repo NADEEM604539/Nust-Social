@@ -518,13 +518,15 @@ class AuthService:
             
             # Generate tokens (auto-login)
             # Note: create_access_token and create_refresh_token return tuples (token, expires_in)
-            access_token, _ = JWTManager.create_access_token(user_id)
+            access_token, expires_in = JWTManager.create_access_token(user_id)
             refresh_token, _ = JWTManager.create_refresh_token(user_id)
             
             tokens = {
                 "access_token": access_token,
                 "refresh_token": refresh_token,
-                "token_type": "bearer"
+                "token_type": "bearer",
+                "expires_in": expires_in,
+                "user_id": user_id
             }
             
             return True, "Password reset successful", tokens

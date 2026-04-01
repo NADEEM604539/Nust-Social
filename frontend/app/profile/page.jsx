@@ -46,11 +46,8 @@ export default function ProfilePage() {
 
         // Fetch current user profile (includes email from updated endpoint)
         const userResponse = await apiRequest(
-          `${API_ENDPOINTS.USERS}/profile/${currUserId}`,
-          {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          API_ENDPOINTS.GET_USER_PROFILE,
+          { method: 'GET' }
         );
         
         if (userResponse) {
@@ -59,11 +56,8 @@ export default function ProfilePage() {
 
         // Fetch user stats
         const statsResponse = await apiRequest(
-          `${API_ENDPOINTS.USERS}/${currUserId}/stats`,
-          {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
-          }
+          API_ENDPOINTS.GET_USER_STATS(currUserId),
+          { method: 'GET' }
         );
         
         if (statsResponse?.stats) {
@@ -84,13 +78,10 @@ export default function ProfilePage() {
 
   const handleEditUsername = async (updatedData) => {
     try {
-      const token = getAccessToken();
-      
       const response = await apiRequest(
-        `${API_ENDPOINTS.USERS}/profile`,
+        API_ENDPOINTS.UPDATE_USER_PROFILE,
         {
           method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify(updatedData),
         }
       );
@@ -107,13 +98,10 @@ export default function ProfilePage() {
 
   const handleEditProfile = async (updatedData) => {
     try {
-      const token = getAccessToken();
-      
       const response = await apiRequest(
-        `${API_ENDPOINTS.USERS}/profile`,
+        API_ENDPOINTS.UPDATE_USER_PROFILE,
         {
           method: 'PUT',
-          headers: { Authorization: `Bearer ${token}` },
           body: JSON.stringify(updatedData),
         }
       );

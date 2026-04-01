@@ -39,7 +39,7 @@ export default function SuggestionsPage() {
       }
 
       const currentOffset = isInitial ? 0 : offset;
-      const url = `${API_ENDPOINTS.USERS}/suggestions/recommended?limit=${LIMIT}&offset=${currentOffset}`;
+      const url = `${API_ENDPOINTS.GET_SUGGESTIONS}?limit=${LIMIT}&offset=${currentOffset}`;
 
       console.log(`Fetching suggestions: offset=${currentOffset}, limit=${LIMIT}`);
 
@@ -75,7 +75,7 @@ export default function SuggestionsPage() {
       const token = getAccessToken();
       if (!token) return;
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      await apiRequest(API_ENDPOINTS.FOLLOW_USER(userId), {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -34,12 +34,6 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated }) {
     setIsSubmitting(true);
 
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to create a post');
-        return;
-      }
-
       const tagList = tags
         .split(',')
         .map((tag) => tag.trim())
@@ -53,10 +47,10 @@ export default function CreatePostModal({ isOpen, onClose, onPostCreated }) {
         tags: tagList.length > 0 ? tagList : null,
       };
 
-      const response = await apiRequest(API_ENDPOINTS.POSTS, {
+      // apiRequest handles token refresh automatically on 401
+      const response = await apiRequest(API_ENDPOINTS.CREATE_POST, {
         method: 'POST',
         body: JSON.stringify(postData),
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.post_id) {

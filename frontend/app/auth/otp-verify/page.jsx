@@ -92,7 +92,7 @@ export default function OTPVerifyPage() {
           otp_code: otpCode,
           purpose: purpose,
         }),
-      });
+      }, false); // Explicitly pass false to not include any auth token
 
       // Check if response has tokens
       if (!response.access_token || !response.refresh_token) {

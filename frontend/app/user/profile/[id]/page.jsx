@@ -56,11 +56,8 @@ export default function UserProfilePage() {
 
         // Fetch user profile
         const userResponse = await apiRequest(
-          `${API_ENDPOINTS.USERS}/profile/${userId}`,
-          {
-            method: 'GET',
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          }
+          API_ENDPOINTS.GET_USER(userId),
+          { method: 'GET' }
         );
         
         if (userResponse) {
@@ -69,11 +66,8 @@ export default function UserProfilePage() {
         
         // Fetch user follow stats
         const statsResponse = await apiRequest(
-          `${API_ENDPOINTS.USERS}/${userId}/stats`,
-          {
-            method: 'GET',
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
-          }
+          API_ENDPOINTS.GET_USER_STATS(userId),
+          { method: 'GET' }
         );
         
         if (statsResponse?.stats) {
@@ -82,7 +76,7 @@ export default function UserProfilePage() {
         }
         
         // Fetch all posts and filter by user_id and non-anonymous
-        const postsResponse = await apiRequest(API_ENDPOINTS.POSTS, {
+        const postsResponse = await apiRequest(API_ENDPOINTS.GET_FEED, {
           method: 'GET',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
@@ -118,9 +112,8 @@ export default function UserProfilePage() {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      await apiRequest(API_ENDPOINTS.FOLLOW_USER(userId), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setIsFollowing(true);
@@ -143,9 +136,8 @@ export default function UserProfilePage() {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      await apiRequest(API_ENDPOINTS.UNFOLLOW_USER(userId), {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setIsFollowing(false);

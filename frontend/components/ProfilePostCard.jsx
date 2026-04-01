@@ -65,9 +65,9 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
   const handleDelete = async () => {
     try {
       setIsDeleting(true);
-      await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+      // apiRequest handles token refresh automatically on 401
+      await apiRequest(`${API_ENDPOINTS.DELETE_POST(post.id)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
       setShowDeleteConfirm(false);
       setShowMenu(false);
@@ -90,7 +90,7 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
 
     try {
       setIsUpdating(true);
-      const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+      const response = await apiRequest(`${API_ENDPOINTS.UPDATE_POST(post.id)}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
@@ -176,18 +176,18 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
       if (userVote === voteType) {
         // Removing vote - just call DELETE
         console.log(`ProfilePostCard[${post.id}]: Calling DELETE to unvote`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
       } else if (userVote) {
         // Switching vote - DELETE previous, then POST new
         console.log(`ProfilePostCard[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         });
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
@@ -195,7 +195,7 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
       } else {
         // Adding new vote - just POST
         console.log(`ProfilePostCard[${post.id}]: Calling POST to vote ${voteType}`);
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
           headers: { Authorization: `Bearer ${token}` },
@@ -207,7 +207,7 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
       // CRITICAL: Refetch post from backend to get latest vote counts from ALL users
       console.log(`ProfilePostCard[${post.id}]: Refetching post data after vote`);
       try {
-        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+        const response = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
           method: 'GET',
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });

@@ -99,6 +99,51 @@ async def get_user_profile(user_id: int, db: Session = Depends(get_db)):
         )
 
 
+@router.get("/profile", response_model=UserProfileResponse)
+async def get_current_user_profile(
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current user profile (authenticated endpoint)"""
+    try:
+        # Get profile from database with username and email from users table
+        profile = db.execute(
+            text("""
+                SELECT p.user_id, p.name, p.bio, p.batch_year, p.department, 
+                       p.created_at, p.updated_at, u.email, u.username
+                FROM user_profiles p
+                LEFT JOIN users u ON p.user_id = u.id
+                WHERE p.user_id = :user_id
+            """),
+            {"user_id": current_user}
+        ).fetchone()
+        
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User profile not found"
+            )
+        
+        return {
+            "user_id": profile[0],
+            "username": profile[8],
+            "name": profile[1],
+            "bio": profile[2],
+            "batch_year": profile[3],
+            "department": profile[4],
+            "created_at": profile[5],
+            "updated_at": profile[6],
+            "email": profile[7]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve profile: {str(e)}"
+        )
+
+
 @router.put("/profile", response_model=UserProfileResponse)
 async def update_user_profile_current(
     profile_update: UserProfileUpdate, 

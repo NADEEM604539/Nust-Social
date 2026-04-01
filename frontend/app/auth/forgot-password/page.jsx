@@ -33,7 +33,18 @@ export default function ForgotPasswordPage() {
       const response = await apiRequest(API_ENDPOINTS.REQUEST_PASSWORD_RESET, {
         method: 'POST',
         body: JSON.stringify({ email }),
-      });
+      }, false); // No auth token needed for password reset request
+
+      console.log('[ForgotPasswordPage] Password reset response:', response);
+
+      // Check if response contains OTP code for testing
+      if (response.message && response.message.includes('OTP for testing')) {
+        const otpMatch = response.message.match(/OTP for testing: (\d{6})/);
+        if (otpMatch) {
+          console.log('[ForgotPasswordPage] OTP Code for testing:', otpMatch[1]);
+          alert(`Your OTP Code: ${otpMatch[1]}\n\nThis is for testing purposes only.`);
+        }
+      }
 
       setSuccess('Verification code sent! Redirecting...');
       setTimeout(() => {

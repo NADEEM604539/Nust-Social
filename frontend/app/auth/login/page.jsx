@@ -32,11 +32,20 @@ export default function LoginPage() {
       const response = await apiRequest(API_ENDPOINTS.LOGIN, {
         method: 'POST',
         body: JSON.stringify({ email, password }),
-        // EXPLICIT: Do not pass includeToken at all for login
-        // Do not pass any headers that might contain Authorization
-      });
+      }, false); // Explicitly pass false to not include any auth token
       
-      console.log('[LoginPage] Login response received:', !!response);
+      console.log('[LoginPage] Login response received:', response);
+
+      // Check if response contains OTP code  for testing
+      if (response.message && response.message.includes('OTP for testing')) {
+        // Extract OTP code from message
+        const otpMatch = response.message.match(/OTP for testing: (\d{6})/);
+        if (otpMatch) {
+          console.log('[LoginPage] OTP Code for testing:', otpMatch[1]);
+          // Show OTP in alert for testing (in production, this would be sent via email)
+          alert(`Your OTP Code: ${otpMatch[1]}\n\nThis is for testing purposes only.`);
+        }
+      }
 
       // Pass email via URL params (not localStorage) to avoid data mixing
       router.push('/auth/otp-verify?email=' + encodeURIComponent(email) + '&purpose=LOGIN');

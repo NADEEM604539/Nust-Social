@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import MediaCarousel from '@/components/MediaCarousel';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function PostDetailModal({ postId }) {
@@ -56,13 +56,11 @@ export default function PostDetailModal({ postId }) {
         setLoading(true);
         setError('');
 
-        const token = getAccessToken();
         console.log('Fetching post with ID:', postId);
         
         try {
-          const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+          const response = await apiRequest(`${API_ENDPOINTS.GET_POST(postId)}`, {
             method: 'GET',
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
           });
 
           console.log('Post Response:', response);
@@ -156,28 +154,20 @@ export default function PostDetailModal({ postId }) {
     try {
       setIsReacting(true);
 
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to react');
-        return;
-      }
-
       if (currentReaction === reactionType) {
         setCurrentReaction(null);
         setLikeCount(Math.max(0, likeCount - 1));
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/react`, {
+        await apiRequest(`${API_ENDPOINTS.UNLIKE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else {
         setCurrentReaction(reactionType);
         if (!currentReaction) {
           setLikeCount(likeCount + 1);
         }
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/react`, {
+        await apiRequest(`${API_ENDPOINTS.LIKE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ type: reactionType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       }
 
@@ -203,12 +193,6 @@ export default function PostDetailModal({ postId }) {
     try {
       setVoteLoading(true);
       console.log(`PostDetail[${post.id}]: Voting ${voteType}, current vote: ${userVote}`);
-
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to vote');
-        return;
-      }
 
       // Store previous state for potential revert
       const previousVote = userVote;
@@ -256,29 +240,28 @@ export default function PostDetailModal({ postId }) {
       if (userVote === voteType) {
         // Removing vote - just call DELETE
         console.log(`PostDetail[${post.id}]: Calling DELETE to unvote`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else if (userVote) {
         // Switching vote - DELETE previous, then POST new
         console.log(`PostDetail[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else {
         // Adding new vote - just POST
         console.log(`PostDetail[${post.id}]: Calling POST to vote ${voteType}`);
-        voteResponse = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/vote`, {
+        voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
+
+
+          
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       }
 
@@ -289,9 +272,8 @@ export default function PostDetailModal({ postId }) {
       // CRITICAL: Refetch post from backend to get latest vote counts from ALL users
       console.log(`PostDetail[${post.id}]: Refetching post data after vote`);
       try {
-        const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+        const response = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         if (response && response.id) {
@@ -344,24 +326,16 @@ export default function PostDetailModal({ postId }) {
 
     setIsSubmitting(true);
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to comment');
-        return;
-      }
-
-      await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/comment`, {
+      await apiRequest(`${API_ENDPOINTS.CREATE_COMMENT(post.id)}`, {
         method: 'POST',
         body: JSON.stringify({ 
           content: newComment,
           is_anonymous: false 
         }),
-        headers: { Authorization: `Bearer ${token}` },
       });
 
-      const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}`, {
+      const response = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response) {
@@ -384,12 +358,8 @@ export default function PostDetailModal({ postId }) {
     if (!window.confirm('Delete this comment?') || !post) return;
 
     try {
-      const token = getAccessToken();
-      if (!token) return;
-
-      await apiRequest(`${API_ENDPOINTS.POSTS}/${post.id}/comment/${commentId}`, {
+      await apiRequest(`${API_ENDPOINTS.DELETE_COMMENT(post.id, commentId)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setComments((prev) => prev.filter((c) => c.id !== commentId));
@@ -404,15 +374,9 @@ export default function PostDetailModal({ postId }) {
 
     try {
       setIsFollowLoading(true);
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to follow users');
-        return;
-      }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${post.user_id}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(post.user_id)}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setIsFollowing(true);
@@ -429,15 +393,9 @@ export default function PostDetailModal({ postId }) {
 
     try {
       setIsFollowLoading(true);
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to unfollow users');
-        return;
-      }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${post.user_id}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(post.user_id)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setIsFollowing(false);

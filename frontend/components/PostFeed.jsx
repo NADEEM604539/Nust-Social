@@ -37,15 +37,14 @@ export default function PostFeed() {
         }
         setError('');
 
-        const token = getAccessToken();
         const fetchOffset = isInitial ? 0 : offsetRef.current;
-        const url = `${API_ENDPOINTS.POSTS}?limit=${LIMIT}&offset=${fetchOffset}`;
+        const url = `${API_ENDPOINTS.GET_FEED}?limit=${LIMIT}&offset=${fetchOffset}`;
         
         console.log(`Fetching posts with offset=${fetchOffset}, limit=${LIMIT}`);
         
+        // apiRequest automatically handles token management and refresh on 401
         const response = await apiRequest(url, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
         console.log('=== API Response ===');
@@ -176,7 +175,7 @@ export default function PostFeed() {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+      await apiRequest(`${API_ENDPOINTS.DELETE_POST(postId)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -197,26 +196,24 @@ export default function PostFeed() {
 
       console.log(`PostFeed: Reacting to post ${postId} with ${reactionType}`);
 
-      // Make API call FIRST
+      // Make API call FIRST - apiRequest handles token refresh on 401
       if (reactionType === 'UNREACT') {
         console.log(`PostFeed: DELETE reaction for post ${postId}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}/react`, {
+        await apiRequest(`${API_ENDPOINTS.UNLIKE_POST(postId)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else {
         console.log(`PostFeed: POST reaction ${reactionType} for post ${postId}`);
-        await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}/react`, {
+        await apiRequest(`${API_ENDPOINTS.LIKE_POST(postId)}`, {
           method: 'POST',
           body: JSON.stringify({ type: reactionType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       }
       
       console.log(`PostFeed: Reaction successful, refreshing posts`);
       
       // THEN refresh the specific post to get accurate state from backend
-      const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+      const response = await apiRequest(`${API_ENDPOINTS.GET_POST(postId)}`, {
         method: 'GET',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -257,16 +254,10 @@ export default function PostFeed() {
 
   const handleComment = async (postId, content) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to comment');
-        return;
-      }
-
-      await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}/comment`, {
+      // apiRequest handles token refresh automatically on 401
+      await apiRequest(`${API_ENDPOINTS.CREATE_COMMENT(postId)}`, {
         method: 'POST',
         body: JSON.stringify({ content: content, is_anonymous: false }),
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       // Refresh posts to show new comment
@@ -279,18 +270,12 @@ export default function PostFeed() {
 
   const handleVote = async (postId) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to vote');
-        return;
-      }
-
       console.log(`PostFeed: Voting on post ${postId}, refreshing post data`);
 
       // Refresh the specific post to get accurate vote counts from backend
-      const response = await apiRequest(`${API_ENDPOINTS.POSTS}/${postId}`, {
+      // apiRequest handles token refresh automatically on 401
+      const response = await apiRequest(`${API_ENDPOINTS.GET_POST(postId)}`, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       console.log(`PostFeed: Got updated post data after vote:`, response);
@@ -328,15 +313,9 @@ export default function PostFeed() {
 
   const handleFollow = async (userId) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to follow users');
-        return;
-      }
-
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      // apiRequest handles token refresh automatically on 401
+      await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(userId)}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       // Update posts to reflect follow status
@@ -362,7 +341,7 @@ export default function PostFeed() {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(userId)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });

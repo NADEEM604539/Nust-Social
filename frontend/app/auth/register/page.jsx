@@ -69,7 +69,18 @@ export default function RegisterPage() {
           username: formData.username,
           encrypted_name: 'auto_generated',
         }),
-      });
+      }, false); // No auth token needed for registration
+
+      console.log('[RegisterPage] Registration response:', response);
+
+      // Check if response contains OTP code for testing
+      if (response.message && response.message.includes('OTP for testing')) {
+        const otpMatch = response.message.match(/OTP for testing: (\d{6})/);
+        if (otpMatch) {
+          console.log('[RegisterPage] OTP Code for testing:', otpMatch[1]);
+          alert(`Your OTP Code: ${otpMatch[1]}\n\nThis is for testing purposes only.`);
+        }
+      }
 
       // Pass email via URL params (not localStorage) to avoid data mixing
       router.push('/auth/otp-verify?email=' + encodeURIComponent(formData.email) + '&purpose=EMAIL_VERIFICATION');

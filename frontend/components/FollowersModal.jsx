@@ -38,7 +38,7 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
       const token = getAccessToken();
       
       // Fetch followers list
-      const response = await apiRequest(`${API_ENDPOINTS.USERS}/${userId}/followers`, {
+      const response = await apiRequest(`${API_ENDPOINTS.GET_FOLLOWERS(userId)}`, {
         method: 'GET',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -68,7 +68,7 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${followUserId}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(followUserId)}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -91,7 +91,7 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
         return;
       }
 
-      await apiRequest(`${API_ENDPOINTS.USERS}/${followUserId}/follow`, {
+      await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(followUserId)}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
