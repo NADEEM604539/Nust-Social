@@ -105,12 +105,6 @@ export default function UserProfilePage() {
 
     try {
       setIsFollowLoading(true);
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to follow users');
-        return;
-      }
-
       await apiRequest(API_ENDPOINTS.FOLLOW_USER(userId), {
         method: 'POST',
       });
@@ -129,12 +123,6 @@ export default function UserProfilePage() {
 
     try {
       setIsFollowLoading(true);
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to unfollow users');
-        return;
-      }
-
       await apiRequest(API_ENDPOINTS.UNFOLLOW_USER(userId), {
         method: 'DELETE',
       });

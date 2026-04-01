@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 const POST_TYPES = [

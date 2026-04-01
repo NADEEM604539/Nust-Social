@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function FollowingModal({ userId, isOpen, onClose, username }) {

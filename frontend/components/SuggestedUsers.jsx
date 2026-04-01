@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function SuggestedUsers() {
@@ -15,12 +15,6 @@ export default function SuggestedUsers() {
     const fetchSuggestions = async () => {
       try {
         setLoading(true);
-        const token = getAccessToken();
-
-        if (!token) {
-          setLoading(false);
-          return;
-        }
 
         const response = await apiRequest(
           `${API_ENDPOINTS.GET_SUGGESTIONS}?limit=5&offset=0`,

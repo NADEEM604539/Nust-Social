@@ -20,20 +20,22 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
   const [voteLoading, setVoteLoading] = useState(false);
   const [voteLocked, setVoteLocked] = useState(false);
   const [voteLockTimeRemaining, setVoteLockTimeRemaining] = useState(0);
-  const token = getAccessToken();
+
   const router = useRouter();
   const [currentUserId, setCurrentUserId] = useState(null);
 
   useEffect(() => {
-    if (token) {
-      try {
+    // Get access token using proper token manager
+    try {
+      const token = getAccessToken();
+      if (token) {
         const decodedToken = JSON.parse(atob(token.split('.')[1]));
         setCurrentUserId(decodedToken.sub || decodedToken.user_id);
-      } catch (e) {
-        console.error('Error decoding token:', e);
       }
+    } catch (e) {
+      console.error('Error decoding token:', e);
     }
-  }, [token]);
+  }, []);
 
   // Countdown timer for vote lock
   useEffect(() => {

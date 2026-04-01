@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { apiRequest, API_ENDPOINTS, getAccessToken } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS } from '@/utils/api';
 import { saveFileToPublic, registerMediaWithBackend } from '@/utils/mediaUpload';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -72,12 +72,6 @@ export default function PostCreationForm({ postType, onSuccess }) {
     setIsSubmitting(true);
 
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to create a post');
-        return;
-      }
-
       let mediaIds = [];
       
       // Save and register media with backend
@@ -99,8 +93,7 @@ export default function PostCreationForm({ postType, onSuccess }) {
             console.log(`Registering ${item.filename} with backend...`);
             const registerResult = await registerMediaWithBackend(
               item.filename,
-              item.type,
-              token
+              item.type
             );
             if (registerResult.success) {
               console.log(

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import PostCard from './PostCard';
-import { apiRequest, API_ENDPOINTS, getAccessToken, getUserId } from '@/utils/api';
+import { apiRequest, API_ENDPOINTS, getUserId } from '@/utils/api';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function PostFeed() {
@@ -169,12 +169,6 @@ export default function PostFeed() {
     if (!window.confirm('Are you sure you want to delete this post?')) return;
 
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to delete posts');
-        return;
-      }
-
       await apiRequest(`${API_ENDPOINTS.DELETE_POST(postId)}`, {
         method: 'DELETE',
       });
@@ -187,12 +181,6 @@ export default function PostFeed() {
 
   const handleReact = async (postId, reactionType) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to react to posts');
-        return;
-      }
-
       console.log(`PostFeed: Reacting to post ${postId} with ${reactionType}`);
 
       // Make API call FIRST - apiRequest handles token refresh on 401
@@ -333,12 +321,6 @@ export default function PostFeed() {
 
   const handleUnfollow = async (userId) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in to unfollow users');
-        return;
-      }
-
       await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(userId)}`, {
         method: 'DELETE',
       });
