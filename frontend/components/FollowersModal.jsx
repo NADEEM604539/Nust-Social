@@ -35,12 +35,9 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
     try {
       setLoading(true);
       setError(null);
-      const token = getAccessToken();
-      
       // Fetch followers list
       const response = await apiRequest(`${API_ENDPOINTS.GET_FOLLOWERS(userId)}`, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       if (response?.followers) {
@@ -62,15 +59,8 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
 
   const handleFollow = async (followUserId) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in');
-        return;
-      }
-
       await apiRequest(`${API_ENDPOINTS.FOLLOW_USER(followUserId)}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setFollowingMap(prev => ({
@@ -85,15 +75,8 @@ export default function FollowersModal({ userId, isOpen, onClose, username }) {
 
   const handleUnfollow = async (followUserId) => {
     try {
-      const token = getAccessToken();
-      if (!token) {
-        setError('Please log in');
-        return;
-      }
-
       await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(followUserId)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setFollowingMap(prev => ({

@@ -92,7 +92,6 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
       setIsUpdating(true);
       const response = await apiRequest(`${API_ENDPOINTS.UPDATE_POST(post.id)}`, {
         method: 'PUT',
-        headers: { Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           caption: editCaption,
           description: editDescription,
@@ -178,19 +177,16 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
         console.log(`ProfilePostCard[${post.id}]: Calling DELETE to unvote`);
         await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else if (userVote) {
         // Switching vote - DELETE previous, then POST new
         console.log(`ProfilePostCard[${post.id}]: Unvoting ${userVote}, then voting ${voteType}`);
         await apiRequest(`${API_ENDPOINTS.UNVOTE_POST(post.id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
         });
         voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       } else {
         // Adding new vote - just POST
@@ -198,10 +194,8 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
         voteResponse = await apiRequest(`${API_ENDPOINTS.VOTE_POST(post.id)}`, {
           method: 'POST',
           body: JSON.stringify({ vote: voteType }),
-          headers: { Authorization: `Bearer ${token}` },
         });
       }
-
       console.log(`ProfilePostCard[${post.id}]: Vote completed successfully, response:`, voteResponse);
 
       // CRITICAL: Refetch post from backend to get latest vote counts from ALL users
@@ -209,17 +203,14 @@ export default function ProfilePostCard({ post, isDark, onDeleted, showComments 
       try {
         const response = await apiRequest(`${API_ENDPOINTS.GET_POST(post.id)}`, {
           method: 'GET',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
 
-        if (response && response.id) {
-          setTrueVotes(response.stats?.rumor_true_votes || 0);
-          setFalseVotes(response.stats?.rumor_false_votes || 0);
-          setUserVote(response.user_vote || null);
-          console.log(`ProfilePostCard[${post.id}]: Updated vote counts - TRUE: ${response.stats?.rumor_true_votes}, FALSE: ${response.stats?.rumor_false_votes}`);
-          if (onPostUpdated) {
-            onPostUpdated(response);
-          }
+        setTrueVotes(response.stats?.rumor_true_votes || 0);
+        setFalseVotes(response.stats?.rumor_false_votes || 0);
+        setUserVote(response.user_vote || null);
+        console.log(`ProfilePostCard[${post.id}]: Updated vote counts - TRUE: ${response.stats?.rumor_true_votes}, FALSE: ${response.stats?.rumor_false_votes}`);
+        if (onPostUpdated) {
+          onPostUpdated(response);
         }
       } catch (refetchError) {
         console.error('Error refetching post after vote:', refetchError);

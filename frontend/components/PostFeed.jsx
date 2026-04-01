@@ -177,7 +177,6 @@ export default function PostFeed() {
 
       await apiRequest(`${API_ENDPOINTS.DELETE_POST(postId)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -215,7 +214,6 @@ export default function PostFeed() {
       // THEN refresh the specific post to get accurate state from backend
       const response = await apiRequest(`${API_ENDPOINTS.GET_POST(postId)}`, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
 
       console.log(`PostFeed: Got updated post data:`, response);
@@ -343,7 +341,6 @@ export default function PostFeed() {
 
       await apiRequest(`${API_ENDPOINTS.UNFOLLOW_USER(userId)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       // Update posts to reflect follow status

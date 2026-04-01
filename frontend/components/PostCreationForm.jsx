@@ -138,7 +138,6 @@ export default function PostCreationForm({ postType, onSuccess }) {
       const response = await apiRequest(API_ENDPOINTS.CREATE_POST, {
         method: 'POST',
         body: JSON.stringify(postData),
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       console.log('Post created:', response);

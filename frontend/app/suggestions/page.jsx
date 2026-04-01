@@ -30,14 +30,6 @@ export default function SuggestionsPage() {
         setLoadingMore(true);
       }
 
-      const token = getAccessToken();
-
-      if (!token) {
-        // Redirect to login if not authenticated
-        window.location.href = '/auth/login';
-        return;
-      }
-
       const currentOffset = isInitial ? 0 : offset;
       const url = `${API_ENDPOINTS.GET_SUGGESTIONS}?limit=${LIMIT}&offset=${currentOffset}`;
 
@@ -45,7 +37,6 @@ export default function SuggestionsPage() {
 
       const response = await apiRequest(url, {
         method: 'GET',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       console.log('Suggestions response:', response);
@@ -72,12 +63,8 @@ export default function SuggestionsPage() {
 
   const handleFollow = async (userId) => {
     try {
-      const token = getAccessToken();
-      if (!token) return;
-
       await apiRequest(API_ENDPOINTS.FOLLOW_USER(userId), {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
       });
 
       setFollowingIds((prev) => new Set([...prev, userId]));
