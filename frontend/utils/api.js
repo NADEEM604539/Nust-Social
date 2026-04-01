@@ -12,11 +12,7 @@
 import { getAccessToken, setAccessToken, setTokens, clearTokens, getRefreshToken, refreshAccessToken, getUserId } from './tokenManager';
 
 // ===== API BASE CONFIGURATION =====
-const API_BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost' 
-  ? 'http://localhost:8000' 
-  : (typeof window !== 'undefined' && window.location.hostname.includes('localhost'))
-    ? 'http://localhost:8000'
-    : `${typeof window !== 'undefined' ? window.location.protocol : 'http:'}//${typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:8000`;
+const API_BASE_URL = 'http://127.0.0.1:8000';
 
 // ===== API ENDPOINTS =====
 export const API_ENDPOINTS = {
@@ -67,6 +63,14 @@ export const API_ENDPOINTS = {
   // Media Upload
   UPLOAD_MEDIA: '/api/v1/media/upload',
   DELETE_MEDIA: (id) => `/api/v1/media/${id}`,
+  
+  // Societies
+  GET_SOCIETIES: '/api/v1/societies',
+  GET_SOCIETY: (id) => `/api/v1/societies/${id}`,
+  GET_SOCIETY_POSTS: (societyId) => `/api/v1/societies/${societyId}/posts`,
+  CREATE_SOCIETY_POST: (societyId) => `/api/v1/societies/${societyId}/posts`,
+  GET_USER_SOCIETIES: '/api/v1/societies/user/my-societies',
+  IS_SOCIETY_ADMIN_OR_MOD: (societyId) => `/api/v1/societies/${societyId}/is-admin-or-moderator`,
 };
 
 // ===== TOKEN REFRESH is handled by tokenManager =====
@@ -99,6 +103,8 @@ export async function apiRequest(
   }
 
   console.log(`[API] Request: ${options.method || 'GET'} ${endpoint}`);
+  console.log(`[API] Full URL: ${url}`);
+  console.log(`[API] Headers:`, { ...headers, Authorization: headers.Authorization ? '***' : 'undefined' });
 
   try {
     const response = await fetch(url, {
@@ -156,6 +162,12 @@ export async function apiRequest(
     console.log(`[API] Success: ${endpoint}`, data);
     return data;
   } catch (error) {
+    // Provide better error messages for network issues
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      console.error(`[API] Network Error - Cannot reach ${url}`);
+      console.error('[API] Make sure backend is running at http://localhost:8000');
+      throw new Error(`Cannot connect to backend - is the server running? (${url})`);
+    }
     console.error(`[API] Request failed:`, error);
     throw error;
   }

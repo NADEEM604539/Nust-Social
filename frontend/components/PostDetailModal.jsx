@@ -30,6 +30,7 @@ export default function PostDetailModal({ postId }) {
   const [voteLoading, setVoteLoading] = useState(false);
   const [voteLocked, setVoteLocked] = useState(false);
   const [voteLockTimeRemaining, setVoteLockTimeRemaining] = useState(0);
+  const [isAdminOrModerator, setIsAdminOrModerator] = useState(false);
 
   const getTimeAgo = (timestamp) => {
     if (!timestamp) return 'Unknown';
@@ -80,6 +81,19 @@ export default function PostDetailModal({ postId }) {
             
             if (response.comments && Array.isArray(response.comments)) {
               setComments(response.comments);
+            }
+            
+            // Check admin/moderator status if it's a society post
+            if (response.society_id) {
+              try {
+                const adminCheckResponse = await apiRequest(`${API_ENDPOINTS.IS_SOCIETY_ADMIN_OR_MOD(response.society_id)}`, {
+                  method: 'GET',
+                });
+                setIsAdminOrModerator(adminCheckResponse?.is_admin_or_moderator || false);
+              } catch (adminError) {
+                console.error('Error checking admin status:', adminError);
+                setIsAdminOrModerator(false);
+              }
             }
           } else {
             setError('Invalid post data');
@@ -472,10 +486,22 @@ export default function PostDetailModal({ postId }) {
               <div className={`px-4 py-3 border-b ${isDark ? 'border-gray-800' : 'border-gray-200'} flex items-center gap-3 justify-between`}>
                 <div className="flex items-center gap-3 flex-1">
                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                    {post.is_anonymous ? '🔒' : (post.username?.charAt(0) || 'U').toUpperCase()}
+                    {post.society_id ? post.society_name?.charAt(0).toUpperCase() : post.is_anonymous ? '🔒' : (post.username?.charAt(0) || 'U').toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    {post.is_anonymous ? (
+                    {post.society_id ? (
+                      <div className="flex items-center gap-2">
+                        <Link 
+                          href={isAdminOrModerator ? `/societies/${post.society_id}` : `/society/${post.society_id}`}
+                          className={`font-semibold text-sm hover:underline ${isDark ? 'text-blue-400' : 'text-blue-600'}`}
+                        >
+                          {post.society_name || 'Society'}
+                        </Link>
+                        <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                          📢 Official
+                        </span>
+                      </div>
+                    ) : post.is_anonymous ? (
                       <p className={`font-semibold text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         🔒 {post.encrypted_name?.substring(0, 8) || 'Anonymous'}
                       </p>
@@ -486,7 +512,7 @@ export default function PostDetailModal({ postId }) {
                     )}
                   </div>
                 </div>
-                {!post.is_owner && post.is_following !== null && (
+                {!post.is_owner && !post.society_id && post.is_following !== null && (
                   <button
                     onClick={isFollowing ? handleUnfollow : handleFollow}
                     disabled={isFollowLoading}

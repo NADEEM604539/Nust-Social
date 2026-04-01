@@ -27,6 +27,8 @@ export default function LoginPage() {
     try {
       console.log('[LoginPage] Login attempt for:', email);
       console.log('[LoginPage] Tokens after page load - Access:', !!localStorage.getItem('accessToken'), 'Refresh:', !!localStorage.getItem('refreshToken'));
+      console.log('[LoginPage] API Endpoint:', API_ENDPOINTS.LOGIN);
+      console.log('[LoginPage] Making API request...');
       
       // Make sure no tokens are sent with login request
       const response = await apiRequest(API_ENDPOINTS.LOGIN, {
@@ -50,7 +52,10 @@ export default function LoginPage() {
       // Pass email via URL params (not localStorage) to avoid data mixing
       router.push('/auth/otp-verify?email=' + encodeURIComponent(email) + '&purpose=LOGIN');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during login');
+      console.error('[LoginPage] Login error:', err);
+      const errorMsg = err instanceof Error ? err.message : 'An error occurred during login';
+      console.error('[LoginPage] Setting error message:', errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }

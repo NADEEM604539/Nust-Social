@@ -152,6 +152,39 @@ class SocietyService:
             )
     
     @staticmethod
+    def get_user_societies(db: Session, user_id: int) -> list:
+        """Get all societies that a user is ADMIN or MODERATOR of"""
+        try:
+            societies = db.execute(
+                text("""
+                    SELECT s.id, s.name, s.description, s.created_by, s.created_at, s.updated_at
+                    FROM societies s
+                    INNER JOIN society_members sm ON s.id = sm.society_id
+                    WHERE sm.user_id = :user_id 
+                    AND sm.role IN ('ADMIN', 'MODERATOR')
+                    ORDER BY s.created_at DESC
+                """),
+                {"user_id": user_id}
+            ).fetchall()
+            
+            return [
+                {
+                    "id": s[0],
+                    "name": s[1],
+                    "description": s[2],
+                    "created_by": s[3],
+                    "created_at": s[4],
+                    "updated_at": s[5]
+                }
+                for s in societies
+            ]
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get user societies: {str(e)}"
+            )
+    
+    @staticmethod
     def update_society(db: Session, society_id: int, current_user_id: int, society_data: SocietyCreate) -> dict:
         """Update society details (admin only)"""
         try:
@@ -564,6 +597,17 @@ class SocietyService:
                 """),
                 {"post_id": post_id, "society_id": society_id}
             )
+            
+            # Initialize post stats for society post
+            db.execute(
+                text("""
+                    INSERT INTO post_stats (post_id, likes_count, comments_count, views_count, 
+                                           rumor_true_votes, rumor_false_votes, rumor_true_votes_weighted, rumor_false_votes_weighted)
+                    VALUES (:post_id, 0, 0, 0, 0, 0, 0.0, 0.0)
+                """),
+                {"post_id": post_id}
+            )
+            
             db.commit()
             
             # Get media IDs

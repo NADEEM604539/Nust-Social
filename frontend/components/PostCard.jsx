@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import MediaCarousel from './MediaCarousel';
 import { useTheme } from '@/context/ThemeContext';
@@ -22,6 +22,7 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
   const [voteLoading, setVoteLoading] = useState(false);
   const [voteLocked, setVoteLocked] = useState(false);
   const [voteLockTimeRemaining, setVoteLockTimeRemaining] = useState(0);
+  const [isAdminOrModerator, setIsAdminOrModerator] = useState(false);
 
   // Sync state when post data changes (from parent PostFeed updates)
   // This is the source of truth - always sync from parent
@@ -34,6 +35,42 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
     setTrueVotes(post.stats?.rumor_true_votes || 0);
     setFalseVotes(post.stats?.rumor_false_votes || 0);
   }, [post.id, post.stats?.likes_count, post.user_reaction, post.is_following, post.user_vote, post.stats?.rumor_true_votes, post.stats?.rumor_false_votes]);
+
+  // Check if user is admin/moderator of the society
+  useEffect(() => {
+    if (!post.society_id || !currentUserId || typeof post.society_id !== 'number') {
+      setIsAdminOrModerator(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const checkAdminStatus = async () => {
+      try {
+        const endpoint = API_ENDPOINTS.IS_SOCIETY_ADMIN_OR_MOD(post.society_id);
+        const response = await apiRequest(endpoint, {
+          method: 'GET',
+        });
+
+        if (isMounted) {
+          setIsAdminOrModerator(response?.is_admin_or_moderator || false);
+        }
+      } catch (error) {
+        if (isMounted) {
+          // Silently fail - admin status is optional information
+          // Default to regular view if check fails
+          setIsAdminOrModerator(false);
+        }
+      }
+    };
+
+    // Fire check in background
+    checkAdminStatus();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [post.society_id, currentUserId]);
 
   // Countdown timer for reaction lock
   useEffect(() => {
@@ -322,10 +359,27 @@ export default function PostCard({ post, currentUserId, onDelete, onReact, onVot
         <div className="flex items-center gap-3">
           {/* Avatar */}
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center text-white font-bold flex-shrink-0">
-            {post.is_anonymous ? '🔒' : post.username?.charAt(0).toUpperCase()}
+            {post.society_id 
+              ? post.society_name?.charAt(0).toUpperCase() 
+              : post.is_anonymous ? '🔒' : post.username?.charAt(0).toUpperCase()}
           </div>
           <div className="flex flex-col flex-1">
-            {post.is_anonymous ? (
+            {/* Show society name if it's a society post, otherwise show username */}
+            {post.society_id ? (
+              <div className="flex items-center gap-2">
+                <Link
+                  href={isAdminOrModerator ? `/societies/${post.society_id}` : `/society/${post.society_id}`}
+                  className={`font-semibold hover:underline ${
+                    isDark ? 'text-blue-400' : 'text-blue-600'
+                  }`}
+                >
+                  {post.society_name || 'Society'}
+                </Link>
+                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                  📢 Official
+                </span>
+              </div>
+            ) : post.is_anonymous ? (
               <span className={`font-semibold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                 {post.encrypted_name?.substring(0, 8) || 'Anonymous'}
               </span>

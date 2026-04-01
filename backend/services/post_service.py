@@ -150,9 +150,11 @@ class PostService:
                 text("""
                     SELECT p.id, p.user_id, p.type, p.caption, p.description, 
                            p.is_anonymous, p.is_approved, p.created_at, p.edited_at,
-                           u.encrypted_name, u.username
+                           u.encrypted_name, u.username, sp.society_id, s.name as society_name
                     FROM posts p
                     LEFT JOIN users u ON p.user_id = u.id
+                    LEFT JOIN society_posts sp ON p.id = sp.post_id
+                    LEFT JOIN societies s ON sp.society_id = s.id
                     WHERE p.id = :post_id AND p.deleted_at IS NULL
                 """),
                 {"post_id": post_id}
@@ -161,7 +163,7 @@ class PostService:
             if not post_result:
                 return False, "Post not found", None
 
-            post_id, post_user_id, post_type, caption, description, is_anonymous, is_approved, created_at, edited_at, encrypted_name, username = post_result
+            post_id, post_user_id, post_type, caption, description, is_anonymous, is_approved, created_at, edited_at, encrypted_name, username, society_id, society_name = post_result
 
             # Mark as viewed if user_id provided
             if user_id:
@@ -295,6 +297,8 @@ class PostService:
                 "is_approved": is_approved,
                 "is_owner": user_id == post_user_id if user_id else False,
                 "is_following": is_following,
+                "society_id": society_id,
+                "society_name": society_name,
                 "media": media,
                 "tags": tags,
                 "comments": comments,
@@ -1147,19 +1151,23 @@ class PostService:
                 post_type_filter = "AND p.type = :post_type"
                 params["post_type"] = post_type
             
-            # 1. Get posts with stats (2 tables only, simple join)
+            # 1. Get posts with stats (includes society info for society posts)
             posts_query = f"""
                 SELECT p.id, p.user_id, p.type, p.caption, p.description, 
                        p.is_anonymous, p.is_approved, p.created_at, p.edited_at,
                        u.encrypted_name, u.username,
                        COALESCE(ps.likes_count, 0),
-                       COALESCE(ps.comments_count, 0),
+                       COALESCE((SELECT COUNT(*) FROM comments WHERE post_id = p.id AND deleted_at IS NULL), 0),
                        COALESCE(ps.views_count, 0),
                        COALESCE(ps.rumor_true_votes, 0),
-                       COALESCE(ps.rumor_false_votes, 0)
+                       COALESCE(ps.rumor_false_votes, 0),
+                       sp.society_id,
+                       s.name
                 FROM posts p
                 LEFT JOIN users u ON p.user_id = u.id
                 LEFT JOIN post_stats ps ON p.id = ps.post_id
+                LEFT JOIN society_posts sp ON p.id = sp.post_id
+                LEFT JOIN societies s ON sp.society_id = s.id
                 WHERE p.deleted_at IS NULL {post_type_filter}
                 ORDER BY p.created_at DESC
                 LIMIT :limit OFFSET :offset
@@ -1262,7 +1270,7 @@ class PostService:
             for post_row in posts_result:
                 (post_id, post_user_id, post_type, caption, description, is_anonymous, is_approved,
                  created_at, edited_at, encrypted_name, username, likes_count, comments_count, views_count,
-                 rumor_true_votes, rumor_false_votes) = post_row
+                 rumor_true_votes, rumor_false_votes, society_id, society_name) = post_row
                 
                 # Determine follow_status: None for anonymous or own posts, True/False for other non-anonymous posts
                 is_following = None
@@ -1293,7 +1301,9 @@ class PostService:
                     "user_reaction": user_reactions.get(post_id),
                     "user_vote": user_rumor_votes.get(post_id),
                     "created_at": created_at,
-                    "edited_at": edited_at
+                    "edited_at": edited_at,
+                    "society_id": society_id,
+                    "society_name": society_name
                 })
             
             # Get total count

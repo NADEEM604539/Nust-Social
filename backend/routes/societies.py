@@ -73,6 +73,22 @@ async def list_societies(
     return societies
 
 
+@router.get("/user/my-societies", response_model=List[SocietyResponse])
+async def get_user_societies(
+    current_user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all societies that the current user is a member of
+    - Requires authentication
+    """
+    societies = SocietyService.get_user_societies(
+        db=db,
+        user_id=current_user_id
+    )
+    return societies
+
+
 @router.get("/{society_id}", response_model=SocietyResponse)
 async def get_society(society_id: int, db: Session = Depends(get_db)):
     """
@@ -533,3 +549,20 @@ async def approve_ticket_purchase(
         current_user_id=current_user_id
     )
     return purchase
+
+
+# ===== CHECK USER ADMIN/MODERATOR STATUS =====
+@router.get("/{society_id}/is-admin-or-moderator", response_model=dict)
+async def is_admin_or_moderator(
+    society_id: int,
+    current_user: int = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Check if current user is admin or moderator of the society
+    Returns: { "is_admin_or_moderator": boolean }
+    """
+    is_admin_mod = SocietyService._is_admin_or_moderator(db, society_id, current_user)
+    return {
+        "is_admin_or_moderator": is_admin_mod
+    }

@@ -79,19 +79,39 @@ export default function PostFeed() {
 
         // Validate posts have required fields
         const validPosts = newPosts.filter((post) => {
+          // Normalize field names (handle both user posts and society posts)
+          if (post.post_id && !post.id) {
+            post.id = post.post_id; // Map post_id to id for society posts
+          }
+          
           if (!post?.id) {
             console.warn('Post missing id:', post);
             return false;
           }
+          
           if (!post?.stats) {
-            post.stats = { likes_count: 0, comments_count: 0, views_count: 0 };
+            post.stats = { 
+              likes_count: 0, 
+              comments_count: 0, 
+              views_count: 0,
+              rumor_true_votes: 0,
+              rumor_false_votes: 0,
+            };
           }
+          
           if (!post?.created_at) {
             post.created_at = new Date().toISOString();
           }
+          
           if (!post?.username && post?.is_anonymous) {
             post.username = null;
           }
+          
+          // Set is_owner for society posts
+          if (post.society_id && !post.hasOwnProperty('is_owner')) {
+            post.is_owner = post.user_id === currentUserId;
+          }
+          
           return true;
         });
 
